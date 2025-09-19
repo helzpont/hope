@@ -1,0 +1,30 @@
+# Godot Editor
+.import/
+*.import
+
+# Export and build
+.export/
+export_presets.cfg
+
+# Godot editor/project settings
+.godot/
+
+# Mono / C#
+.mono/
+*.sln
+*.csproj
+bin/
+obj/
+
+# IDEs
+.vscode/
+.idea/
+
+# macOS
+.DS_Store
+
+# Temp files
+*.tmp
+# Godot 4+ specific ignores
+.godot/
+/android/
