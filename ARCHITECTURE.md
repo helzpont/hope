@@ -2,33 +2,85 @@
 
 ## Project Overview
 
-HOPE is built using Godot 4.x with a focus on physics-based gameplay, stick-only controls, and accessibility. This document outlines the technical architecture, system design, and implementation patterns used throughout the project.
+HOPE is built using Godot 4.x with a focus on arcade-style movement, fighting game-inspired motion inputs, and stick-only controls. This document outlines the technical architecture, system design, and implementation patterns used throughout the project.
 
 ## System Architecture
 
 ### High-Level Component Diagram
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Input Layer   │    │  Physics Layer  │    │ Presentation    │
+│   Input Layer   │    │ Movement Layer  │    │ Presentation    │
 │                 │    │                 │    │     Layer       │
-│ • InputManager  │───▶│ • BalanceSystem │───▶│ • AudioManager  │
-│ • Controller    │    │ • PolePhysics   │    │ • VisualFX      │
-│   Mapping       │    │ • Collision     │    │ • UI Systems    │
+│ • InputManager  │───▶│ • MotionDetector│───▶│ • AudioManager  │
+│ • Controller    │    │ • MoveSystem    │    │ • AnimationSys  │
+│   Mapping       │    │ • Arcade Physics│    │ • UI Systems    │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
          │                       │                       │
          ▼                       ▼                       ▼
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Game Logic    │    │   AI Systems    │    │  Data Layer     │
+│   Game Logic    │    │   AI Systems    │    │  Story Layer    │
 │                 │    │                 │    │                 │
-│ • GameManager   │    │ • EnemyAI       │    │ • SaveSystem    │
-│ • RoomManager   │    │ • Pathfinding   │    │ • Settings      │
-│ • StateManager  │    │ • Behaviors     │    │ • Analytics     │
+│ • GameManager   │    │ • EnemyAI       │    │ • CutsceneManager│
+│ • RoomManager   │    │ • Simple        │    │ • TrainingRooms │
+│ • ProgressionMgr│    │   Behaviors     │    │ • LinearStory   │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
 ## Core Systems
 
-### 1. Input Management System
+### 1. Motion Input System
+
+#### MotionInputDetector Class
+```gdscript
+# scripts/systems/MotionInputDetector.gd
+extends Node
+class_name MotionInputDetector
+
+signal motion_detected(motion_name: String)
+
+@export var motion_buffer_time: float = 0.5
+@export var input_tolerance_degrees: float = 22.5
+@export var minimum_input_magnitude: float = 0.3
+
+var motion_buffer: Array[MotionInput] = []
+var known_patterns: Dictionary = {}
+
+class MotionInput:
+    var direction: Vector2
+    var timestamp: float
+    
+    func _init(dir: Vector2, time: float):
+        direction = dir
+        timestamp = time
+
+func _ready():
+    _setup_motion_patterns()
+
+func _setup_motion_patterns():
+    # Define motion patterns for special moves
+    known_patterns["pole_vault"] = [Vector2.DOWN, Vector2(1, 1), Vector2.RIGHT]
+    known_patterns["spinning_swipe"] = [Vector2.RIGHT, Vector2.DOWN, Vector2(1, 1)]
+    known_patterns["wall_slide"] = [Vector2.LEFT, Vector2(-1, 1), Vector2.DOWN]
+    known_patterns["pole_plant"] = [Vector2.DOWN, Vector2.UP]
+    known_patterns["sweep_attack"] = [Vector2(1, 1), Vector2.RIGHT, Vector2(1, -1)]
+
+func add_input(direction: Vector2):
+    if direction.length() < minimum_input_magnitude:
+        return
+    
+    var current_time = Time.get_time_dict_from_system()
+    motion_buffer.append(MotionInput.new(direction.normalized(), current_time))
+    
+    _clean_old_inputs()
+    _check_for_patterns()
+
+func _check_for_patterns():
+    for pattern_name in known_patterns:
+        if _matches_pattern(known_patterns[pattern_name]):
+            motion_detected.emit(pattern_name)
+            motion_buffer.clear()
+            break
+```
 
 #### InputManager Class
 ```gdscript
@@ -45,6 +97,7 @@ signal interaction_triggered()
 @export var stick_sensitivity: float = 1.0
 
 var current_controller: int = -1
+var motion_detector: MotionInputDetector
 var input_buffer: Array[InputEvent] = []
 
 func _ready():
@@ -81,13 +134,14 @@ func get_camera_input() -> Vector2:
 func _apply_dead_zone(input: Vector2, dead_zone: float) -> Vector2:
     if input.length() < dead_zone:
         return Vector2.ZERO
-    
+
     # Scale input to remove dead zone
     var scaled_magnitude = (input.length() - dead_zone) / (1.0 - dead_zone)
     return input.normalized() * scaled_magnitude * stick_sensitivity
 ```
 
 #### Controller Compatibility Layer
+
 ```gdscript
 # scripts/systems/ControllerMapper.gd
 extends Resource
@@ -119,7 +173,7 @@ var controller_mappings: Dictionary = {
 
 func detect_controller_type(device_id: int) -> ControllerType:
     var device_name = Input.get_joy_name(device_id).to_lower()
-    
+
     if "xbox" in device_name or "microsoft" in device_name:
         return ControllerType.XBOX
     elif "playstation" in device_name or "sony" in device_name:
@@ -133,6 +187,7 @@ func detect_controller_type(device_id: int) -> ControllerType:
 ### 2. Physics System
 
 #### Balance System Architecture
+
 ```gdscript
 # scripts/player/BalanceSystem.gd
 extends Node
@@ -173,7 +228,7 @@ func _update_balance_calculation(delta: float):
     pole_angle_factor = _calculate_pole_angle_factor()
     velocity_factor = _calculate_velocity_factor()
     external_force_factor = _calculate_external_force_factor()
-    
+
     # Weighted average of factors
     current_balance = (
         pole_angle_factor * 0.5 +
@@ -185,7 +240,7 @@ func _calculate_pole_angle_factor() -> float:
     var pole = get_parent().get_node("Pole") as PolePhysics
     if not pole:
         return 0.0
-    
+
     var angle_degrees = abs(rad_to_deg(pole.rotation))
     return clamp(angle_degrees / 45.0, 0.0, 1.0)  # 45° = max stable angle
 
@@ -193,29 +248,30 @@ func _calculate_velocity_factor() -> float:
     var player = get_parent() as CharacterBody2D
     if not player:
         return 0.0
-    
+
     var speed = player.velocity.length()
     return clamp(speed / 200.0, 0.0, 1.0)  # 200 = max stable speed
 
 func _update_balance_state():
     var new_state: BalanceState
-    
+
     if current_balance < stability_threshold:
         new_state = BalanceState.STABLE
     elif current_balance < falling_threshold:
         new_state = BalanceState.UNSTABLE
     else:
         new_state = BalanceState.FALLING
-    
+
     if new_state != current_state:
         current_state = new_state
         balance_state_changed.emit(current_state)
-        
+
         if current_state == BalanceState.FALLING:
             balance_lost.emit()
 ```
 
 #### Pole Physics Implementation
+
 ```gdscript
 # scripts/player/PolePhysics.gd
 extends RigidBody2D
@@ -237,7 +293,7 @@ func _setup_collision_shape():
     var shape = CapsuleShape2D.new()
     shape.height = pole_length
     shape.radius = 5.0
-    
+
     var collision = CollisionShape2D.new()
     collision.shape = shape
     add_child(collision)
@@ -245,7 +301,7 @@ func _setup_collision_shape():
 func attach_to_character(character: CharacterBody2D):
     attached_character = character
     attachment_point = Vector2(0, -20)  # Slightly above character center
-    
+
     # Create joint connection
     var joint = PinJoint2D.new()
     joint.node_a = character.get_path()
@@ -256,23 +312,23 @@ func attach_to_character(character: CharacterBody2D):
 func _integrate_forces(state: PhysicsDirectBodyState2D):
     if not attached_character:
         return
-    
+
     # Apply character movement influence
     var character_velocity = attached_character.velocity
     var influence_force = character_velocity * 0.1
     state.apply_central_force(influence_force)
-    
+
     # Apply damping
     state.angular_velocity *= damping_factor
     state.linear_velocity *= damping_factor
-    
+
     # Maintain attachment
     _maintain_attachment(state)
 
 func _maintain_attachment(state: PhysicsDirectBodyState2D):
     var target_position = attached_character.global_position + attachment_point
     var current_position = state.transform.origin
-    
+
     var correction_force = (target_position - current_position) * 100.0
     state.apply_central_force(correction_force)
 ```
@@ -280,6 +336,7 @@ func _maintain_attachment(state: PhysicsDirectBodyState2D):
 ### 3. Scene Architecture
 
 #### Main Scene Structure
+
 ```
 Main.tscn
 ├── GameManager (Node)
@@ -297,6 +354,7 @@ Main.tscn
 ```
 
 #### Room Scene Template
+
 ```
 Room.tscn
 ├── Environment (Node2D)
@@ -322,6 +380,7 @@ Room.tscn
 ### 4. AI System Architecture
 
 #### Base Enemy AI Framework
+
 ```gdscript
 # scripts/enemies/BaseEnemyAI.gd
 extends CharacterBody2D
@@ -368,12 +427,12 @@ func _setup_detection_area():
     var detection_area = Area2D.new()
     var detection_shape = CircleShape2D.new()
     detection_shape.radius = detection_range
-    
+
     var collision = CollisionShape2D.new()
     collision.shape = detection_shape
     detection_area.add_child(collision)
     add_child(detection_area)
-    
+
     detection_area.body_entered.connect(_on_player_detected)
     detection_area.body_exited.connect(_on_player_lost)
 
@@ -389,6 +448,7 @@ func _alert_behavior(delta: float):
 ```
 
 #### Specific Enemy Implementations
+
 ```gdscript
 # scripts/enemies/PatrolBot.gd
 extends BaseEnemyAI
@@ -403,19 +463,19 @@ var wait_timer: float = 0.0
 func _patrol_behavior(delta: float):
     if patrol_points.is_empty():
         return
-    
+
     var target = patrol_points[current_patrol_index]
     var direction = (target - global_position).normalized()
-    
+
     velocity = direction * movement_speed
-    
+
     # Check if reached patrol point
     if global_position.distance_to(target) < 10.0:
         _handle_patrol_point_reached()
 
 func _handle_patrol_point_reached():
     wait_timer += get_physics_process_delta_time()
-    
+
     if wait_timer >= wait_time:
         current_patrol_index = (current_patrol_index + 1) % patrol_points.size()
         wait_timer = 0.0
@@ -424,6 +484,7 @@ func _handle_patrol_point_reached():
 ### 5. Audio System
 
 #### Dynamic Audio Manager
+
 ```gdscript
 # scripts/systems/AudioManager.gd
 extends Node
@@ -449,22 +510,22 @@ func _setup_audio_pools():
 
 func _create_audio_pool(sound_name: String, pool_size: int) -> Array[AudioStreamPlayer]:
     var pool: Array[AudioStreamPlayer] = []
-    
+
     for i in pool_size:
         var player = AudioStreamPlayer.new()
         player.stream = load("res://audio/sfx/" + sound_name + ".ogg")
         add_child(player)
         pool.append(player)
-    
+
     return pool
 
 func play_sound(sound_name: String, pitch_variation: float = 0.0):
     if not audio_pools.has(sound_name):
         return
-    
+
     var pool = audio_pools[sound_name]
     var available_player = _get_available_player(pool)
-    
+
     if available_player:
         available_player.pitch_scale = 1.0 + pitch_variation
         available_player.volume_db = linear_to_db(sfx_volume)
@@ -473,7 +534,7 @@ func play_sound(sound_name: String, pitch_variation: float = 0.0):
 func update_balance_audio(balance_state: float):
     if not balance_audio:
         return
-    
+
     # Adjust audio based on balance state
     var tension_level = clamp(balance_state, 0.0, 1.0)
     balance_audio.pitch_scale = 1.0 + (tension_level * 0.5)
@@ -483,6 +544,7 @@ func update_balance_audio(balance_state: float):
 ### 6. Save System
 
 #### Persistent Data Management
+
 ```gdscript
 # scripts/systems/SaveSystem.gd
 extends Node
@@ -502,7 +564,7 @@ func save_game(data: Dictionary):
     current_save_data = data
     current_save_data["timestamp"] = Time.get_unix_time_from_system()
     current_save_data["version"] = ProjectSettings.get_setting("application/config/version")
-    
+
     var file = FileAccess.open(SAVE_FILE_PATH, FileAccess.WRITE)
     if file:
         var json_string = JSON.stringify(current_save_data)
@@ -512,20 +574,20 @@ func save_game(data: Dictionary):
 func load_game() -> Dictionary:
     if not FileAccess.file_exists(SAVE_FILE_PATH):
         return _get_default_save_data()
-    
+
     var file = FileAccess.open(SAVE_FILE_PATH, FileAccess.READ)
     if not file:
         return _get_default_save_data()
-    
+
     var json_string = file.get_as_text()
     file.close()
-    
+
     var json = JSON.new()
     var parse_result = json.parse(json_string)
-    
+
     if parse_result != OK:
         return _get_default_save_data()
-    
+
     return json.data
 
 func _get_default_save_data() -> Dictionary:
@@ -546,18 +608,21 @@ func _get_default_save_data() -> Dictionary:
 ## Performance Optimization
 
 ### Physics Optimization
+
 - Use Godot's built-in physics for pole simulation
 - Implement custom balance calculations for performance
 - Pool frequently created objects (particles, projectiles)
 - Optimize collision detection with appropriate collision layers
 
 ### Memory Management
+
 - Preload frequently used scenes and resources
 - Use object pooling for temporary objects
 - Implement proper cleanup in scene transitions
 - Monitor memory usage with built-in profiler
 
 ### Rendering Optimization
+
 - Use appropriate texture sizes for target resolution
 - Implement level-of-detail for background elements
 - Optimize particle systems for performance
@@ -566,18 +631,21 @@ func _get_default_save_data() -> Dictionary:
 ## Platform Considerations
 
 ### Controller Support
+
 - Test with multiple controller types (Xbox, PlayStation, generic)
 - Implement controller hotswapping
 - Provide dead zone customization
 - Support controller vibration for feedback
 
 ### Accessibility Features
+
 - High contrast visual options
 - Colorblind-friendly color schemes
 - Audio cues for visual elements
 - Customizable input sensitivity
 
 ### Performance Targets
+
 - 60fps on minimum spec hardware
 - Sub-3-second room loading times
 - Stable memory usage over extended play
@@ -586,12 +654,14 @@ func _get_default_save_data() -> Dictionary:
 ## Development Tools
 
 ### Debug Visualization
+
 - Balance state indicators
 - Physics force visualization
 - AI state display
 - Performance metrics overlay
 
 ### Level Editor Integration
+
 - Custom tools for room creation
 - Automated testing for room completion
 - Visual scripting for simple interactions

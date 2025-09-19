@@ -2,237 +2,276 @@
 
 ## Core Mechanics Specification
 
-### Pole Physics System
+### Arcade Movement System
 
-#### Balance Calculation
-```
-Balance State = (Pole Angle + Movement Velocity + External Forces) / Stability Threshold
-- Stable: Balance State < 0.3
-- Unstable: Balance State 0.3-0.7 (warning indicators)
-- Falling: Balance State > 0.7 (failure state)
-```
+#### Movement Philosophy
 
-#### Pole Properties
-- **Length**: 2.5x HOPE's height
-- **Weight**: Affects momentum and recovery time
-- **Flexibility**: Slight bend under stress, returns to straight
-- **Collision**: Full physics collision with environment
+- **Responsive Controls**: Immediate character response to input
+- **Forgiving Gameplay**: Generous timing windows and input buffering
+- **Visual Polish**: Animations suggest mechanical precision without simulation complexity
+- **Predictable Behavior**: Consistent movement speeds and distances for reliable platforming
+
+#### Basic Movement Properties
+
+- **Speed**: Constant 120 pixels/second in all directions
+- **Acceleration**: Instant start/stop for responsive feel
+- **Animation**: Smooth interpolation between movement states
+- **8-Directional**: Full directional movement with diagonal support
+
+### Motion Input System
+
+#### Input Detection
+
+```
+Motion Buffer: 0.5 second window for pattern completion
+Input Tolerance: ±22.5° angle variance for directional inputs
+Minimum Hold Time: 0.1 seconds for directional registration
+Maximum Pattern Time: 1.0 seconds from first to last input
+```
 
 #### Control Mapping
-- **Left Stick X-Axis**: 
-  - Range: -1.0 to 1.0
-  - Dead Zone: 0.1
-  - Movement Speed: `stick_input * max_speed * balance_modifier`
-  - Pole Lean: `stick_input * max_lean_angle`
 
-- **Left Stick Y-Axis**:
-  - Up: Extend pole upward (reduce center of gravity)
-  - Down: Lower pole/crouch (increase stability, reduce speed)
-  - Range affects balance recovery speed
+- **Left Stick**: Motion input and basic movement
+  - **Neutral**: No movement, ready for motion input
+  - **Directional Hold**: Continuous movement in direction
+  - **Motion Patterns**: Sequence of directions for special moves
+- **Right Stick**: Camera and interaction
+  - **Horizontal**: Camera pan (-45° to +45°)
+  - **Vertical**: Camera zoom (0.8x to 1.5x)
+  - **Click**: Interact with nearby objects
 
-- **Right Stick X-Axis**:
-  - Camera pan: -45° to +45° from HOPE's position
-  - Smooth interpolation with 0.2s lag
+### Move System Specification
 
-- **Right Stick Y-Axis**:
-  - Camera zoom: 0.8x to 1.5x base zoom
-  - Closer zoom for precision, farther for planning
+#### Basic Moves (Always Available)
 
-- **Right Stick Click**:
-  - Interaction radius: 1.5x pole length
-  - Activates switches, doors, collectibles
-  - Visual feedback: highlight interactive objects in range
+1. **Walk**: Hold any direction - 120 pixels/second movement
+2. **Crouch**: Hold Down - 60 pixels/second, lower collision box
+3. **Reach**: Hold Up - Extend pole upward, activate high switches
 
-### Movement States
+#### Learned Moves (Introduced via Cutscenes)
 
-#### Walking (Default)
-- **Speed**: 100 pixels/second
-- **Balance Window**: ±30° pole angle before instability
-- **Recovery Time**: 0.5s to return to stable from unstable
-- **Audio**: Soft mechanical footsteps
+##### Pole Vault (Room 3)
 
-#### Running (Fast Movement)
-- **Trigger**: Left stick magnitude > 0.8
-- **Speed**: 200 pixels/second
-- **Balance Window**: ±15° pole angle (more sensitive)
-- **Recovery Time**: 1.0s (harder to recover)
-- **Audio**: Faster, more urgent footsteps
-- **Visual**: HOPE leans forward, pole trails behind
+- **Input**: ↓↘→ (Down, Down-Forward, Forward)
+- **Effect**: Leap forward 200 pixels, clear 80-pixel height obstacles
+- **Duration**: 0.8 seconds total animation
+- **Cooldown**: 0.2 seconds before next move
 
-#### Pole Vaulting
-- **Trigger**: Running + approach gap + right stick up
-- **Mechanics**: 
-  - Plant pole at gap edge
-  - Momentum carries HOPE in arc
-  - Must land with balanced pole angle
-  - Failure results in fall into gap
-- **Range**: Up to 3x HOPE's height horizontally
+##### Spinning Swipe (Room 5)
 
-#### Wall Sliding
-- **Trigger**: Pole contacts wall while moving
-- **Mechanics**:
-  - Pole slides along wall surface
-  - Controlled descent on vertical surfaces
-  - Can change direction by adjusting pole angle
-- **Speed**: 50 pixels/second descent
+- **Input**: →↓↘ (Forward, Down, Down-Forward)
+- **Effect**: 360° attack, 100-pixel radius, destroys multiple enemies
+- **Duration**: 1.0 seconds total animation
+- **Cooldown**: 0.5 seconds before next move
 
-### Environmental Systems
+##### Wall Slide (Room 7)
 
-#### Moving Platforms
-- **Tilt Response**: Platform angle affects HOPE's balance
-- **Momentum Transfer**: Platform movement adds to HOPE's velocity
-- **Stability Zones**: Some platforms have railings (easier balance)
-- **Timing**: Platforms move in predictable patterns
+- **Input**: ←↙↓ (Back, Down-Back, Down) near wall
+- **Effect**: Controlled descent at 80 pixels/second
+- **Duration**: Until reaching ground or input released
+- **Requirement**: Must be within 20 pixels of wall
 
-#### Wind Zones
-- **Visual Indicator**: Particle effects show wind direction/strength
-- **Physics Effect**: Constant force applied to HOPE and pole
-- **Adaptation**: Player must lean into wind to maintain balance
-- **Intensity Levels**:
-  - Light: 20% balance difficulty increase
-  - Moderate: 50% increase, affects movement speed
-  - Strong: 100% increase, requires constant adjustment
+##### Pole Plant (Room 10)
 
-#### Electrical Fields
-- **Detection**: Pole vibrates (controller rumble) when near
-- **Visual**: Crackling energy effects, sparks
-- **Danger**: Instant failure if HOPE or pole touches
-- **Navigation**: Must find safe paths around or under fields
+- **Input**: ↓↑ (Down, Up)
+- **Effect**: Anchor in place, immune to moving platform effects
+- **Duration**: Until input released or 5 seconds maximum
+- **Visual**: Pole extends into ground, HOPE becomes stationary
+
+##### Sweep Attack (Room 12)
+
+- **Input**: ↘→↗ (Down-Forward, Forward, Up-Forward)
+- **Effect**: Low horizontal attack, 150-pixel range, hits ground-level enemies
+- **Duration**: 0.6 seconds total animation
+- **Cooldown**: 0.3 seconds before next move
+
+#### Advanced Combinations (Room 15+)
+
+- **Vault-Swipe**: Pole Vault immediately followed by Spinning Swipe
+- **Plant-Sweep**: Pole Plant to stabilize, then Sweep Attack
+- **Slide-Vault**: Wall Slide into Pole Vault for momentum preservation
 
 ## Enemy Behaviors
 
 ### Patrol Bots
-- **Movement**: Fixed rectangular paths
+
+- **Movement**: Predictable back-and-forth patterns
 - **Speed**: 80 pixels/second
-- **Detection**: None (purely obstacle-based)
-- **Collision**: Pushes HOPE, disrupts balance
-- **Strategy**: Timing-based avoidance
+- **Health**: Destroyed by Spinning Swipe
+- **Behavior**: Simple obstacle, no AI detection
+- **Strategy**: Timing-based avoidance or direct attack
 
 ### Sentry Bots
-- **Position**: Fixed locations with 180° detection arc
-- **Detection Range**: 300 pixels
-- **Alert State**: 2-second warning before firing
-- **Projectile**: Energy bolt, 150 pixels/second
-- **Cooldown**: 3 seconds between shots
-- **Weakness**: Blind spots behind and to sides
+
+- **Position**: Fixed turret locations
+- **Detection Range**: 200 pixels, 90° arc
+- **Attack**: Single energy bolt every 2 seconds
+- **Weakness**: Destroyed by Pole Vault approach + Spinning Swipe
+- **Strategy**: Use cover or vault over projectiles
 
 ### Swarm Bots
-- **Count**: 3-5 per group
-- **Behavior**: Follow simple flocking algorithm
-- **Speed**: 120 pixels/second
-- **Attack**: Collision damage, disrupts balance severely
-- **Weakness**: Pole can knock them away with swing motion
-- **Spawn**: Triggered by proximity to certain areas
 
-### Mimic Bots
-- **Behavior**: Copy HOPE's movements with 1-second delay
-- **Challenge**: Creates mirror puzzles
-- **Failure**: If mimic falls, HOPE also fails
-- **Strategy**: Requires planning movement sequences
-- **Visual**: Slightly transparent, different color
+- **Count**: 3-5 small robots per group
+- **Behavior**: Move toward HOPE in formation
+- **Speed**: 100 pixels/second
+- **Weakness**: All destroyed by single Sweep Attack
+- **Strategy**: Let them group up, then use low attack
 
-### The Overseer (Boss)
-- **Phase 1**: Controls facility systems (doors, platforms)
-- **Phase 2**: Direct attacks with energy beams
+### Shield Bots
+
+- **Defense**: Front-facing energy shield
+- **Weakness**: Vulnerable from behind or above
+- **Strategy**: Pole Vault over shield, attack from behind
+- **Health**: Requires two hits to destroy
+
+### The Overseer (Final Boss)
+
+- **Phase 1**: Environmental attacks (moving platforms, barriers)
+- **Phase 2**: Direct energy beam attacks
 - **Phase 3**: Summons other robot types
-- **Weakness**: Must use environment against it
-- **Victory Condition**: Reach central console while avoiding attacks
+- **Strategy**: Use all learned moves in sequence
+- **Victory**: Reach central console using advanced move combinations
 
 ## Level Progression
 
-### Act 1: Laboratory Escape (Rooms 1-5)
-**Learning Objectives**: Basic movement, balance, simple obstacles
+### Act 1: Foundation (Rooms 1-7)
 
-#### Room 1: Tutorial
-- **Goal**: Learn basic movement and balance
-- **Obstacles**: None
-- **Interactive**: Practice pole with switches
-- **Success Metric**: Reach exit without falling
+**Focus**: Basic movement and first three techniques
 
-#### Room 2: First Gap
-- **Goal**: Learn pole vaulting
-- **Obstacles**: Single gap, 2x HOPE's height
-- **Teaching**: Visual guide shows pole placement
-- **Success Metric**: Successfully vault gap
+#### Room 1: Movement Tutorial
 
-#### Room 3: Moving Platform
-- **Goal**: Balance on moving surface
-- **Obstacles**: Single platform, slow movement
-- **Teaching**: Platform telegraphs movement
-- **Success Metric**: Ride platform to exit
+- **Goal**: Learn basic 8-directional movement
+- **Obstacles**: Simple platforms and gaps
+- **Teaching**: Movement responsiveness and camera control
+- **Success**: Reach exit using only basic movement
 
-#### Room 4: First Enemy
-- **Goal**: Avoid Patrol Bot
-- **Obstacles**: Single Patrol Bot, simple path
-- **Teaching**: Bot path is clearly visible
-- **Success Metric**: Reach exit without collision
+#### Room 2: Interaction Tutorial
 
-#### Room 5: Combination
-- **Goal**: Combine learned skills
-- **Obstacles**: Gap + moving platform + patrol bot
-- **Teaching**: Multiple solution paths available
-- **Success Metric**: Use any valid strategy to exit
+- **Goal**: Learn right stick click for switches
+- **Obstacles**: Doors requiring switch activation
+- **Teaching**: Environmental interaction system
+- **Success**: Open all doors and reach exit
 
-### Act 2: University Grounds (Rooms 6-15)
-**Learning Objectives**: Advanced movement, enemy types, environmental hazards
+#### Room 3: Pole Vault Introduction
 
-#### Rooms 6-8: Wind Zones
-- Progressive wind intensity
-- Learn to compensate for external forces
-- Introduce wall sliding in windy areas
+- **Cutscene**: HOPE observes gap, learns Pole Vault (↓↘→)
+- **Training Room**: Safe practice area with multiple gaps
+- **Application**: Single gap requiring Pole Vault to cross
+- **Success**: Execute Pole Vault successfully
 
-#### Rooms 9-11: Sentry Bots
-- Detection mechanics
-- Cover and timing
-- Using pole to block projectiles
+#### Room 4: Pole Vault Integration
 
-#### Rooms 12-13: Swarm Encounters
-- Multiple enemy management
-- Pole combat mechanics
-- Escape vs. fight decisions
+- **Goal**: Combine movement and Pole Vault
+- **Obstacles**: Multiple gaps of varying sizes
+- **Teaching**: Timing and positioning for vaulting
+- **Success**: Navigate course using movement + Pole Vault
 
-#### Rooms 14-15: Electrical Hazards
-- Pole detection of danger
-- Complex navigation puzzles
-- Precision movement requirements
+#### Room 5: Spinning Swipe Introduction
 
-### Act 3: Dormitory Infiltration (Rooms 16-20)
-**Learning Objectives**: Master-level challenges, story climax
+- **Cutscene**: HOPE encounters Patrol Bots, learns Spinning Swipe (→↓↘)
+- **Training Room**: Practice area with target dummies
+- **Application**: Room with 2-3 Patrol Bots to defeat
+- **Success**: Clear all enemies using Spinning Swipe
 
-#### Rooms 16-17: Mimic Puzzles
-- Movement planning
-- Sequence memorization
-- Cooperative failure states
+#### Room 6: Combat Integration
 
-#### Room 18: Multi-Enemy Gauntlet
-- All enemy types present
-- Multiple solution paths
-- Resource management (stamina/balance)
+- **Goal**: Combine movement, vaulting, and combat
+- **Obstacles**: Patrol Bots + gaps requiring navigation
+- **Teaching**: Combat timing and positioning
+- **Success**: Reach exit while defeating all enemies
 
-#### Room 19: The Overseer Approach
-- Environmental storytelling
-- Final skill check before boss
-- Multiple checkpoint saves
+#### Room 7: Wall Slide Introduction
 
-#### Room 20: The Overseer Battle
-- Three-phase boss fight
-- All mechanics utilized
-- Story resolution
+- **Cutscene**: HOPE faces tall wall, learns Wall Slide (←↙↓)
+- **Training Room**: Safe practice wall with soft landing
+- **Application**: Vertical descent challenge
+- **Success**: Descend safely using Wall Slide
+
+### Act 2: Mastery (Rooms 8-15)
+
+**Focus**: Advanced techniques and enemy variety
+
+#### Room 8-9: Sentry Bot Encounters
+
+- **New Enemy**: Sentry Bots with ranged attacks
+- **Strategy**: Use Pole Vault to avoid/approach
+- **Teaching**: Ranged enemy tactics
+
+#### Room 10: Pole Plant Introduction
+
+- **Cutscene**: Moving platform challenge, learn Pole Plant (↓↑)
+- **Training Room**: Various moving platform types
+- **Application**: Navigate unstable platform sequence
+
+#### Room 11: Environmental Mastery
+
+- **Goal**: Combine all four techniques
+- **Obstacles**: Mixed challenges requiring technique selection
+- **Teaching**: Situational awareness and move choice
+
+#### Room 12: Sweep Attack Introduction
+
+- **Cutscene**: Swarm Bot encounter, learn Sweep Attack (↘→↗)
+- **Training Room**: Practice against multiple small targets
+- **Application**: Clear Swarm Bot groups
+
+#### Room 13-14: Shield Bot Challenges
+
+- **New Enemy**: Shield Bots requiring positional attacks
+- **Strategy**: Vault over shields, attack from behind
+- **Teaching**: Advanced combat positioning
+
+#### Room 15: Combination Mastery
+
+- **Goal**: Learn advanced move combinations
+- **Teaching**: Chaining moves for complex challenges
+- **Preparation**: Final skills before boss encounter
+
+### Act 3: Climax (Rooms 16-20)
+
+**Focus**: Master-level challenges and story resolution
+
+#### Room 16-17: Gauntlet Challenges
+
+- **Mixed Enemies**: All robot types in complex arrangements
+- **Strategy**: Apply optimal move combinations
+- **Teaching**: Combat efficiency and resource management
+
+#### Room 18: Pre-Boss Challenge
+
+- **Goal**: Demonstrate mastery of all techniques
+- **Obstacles**: Comprehensive skill test
+- **Story**: Final approach to Overseer chamber
+
+#### Room 19: The Overseer Battle
+
+- **Boss Fight**: Three-phase encounter
+- **Mechanics**: All learned moves required
+- **Story**: Confrontation with facility's AI controller
+
+#### Room 20: Resolution
+
+- **Goal**: Reach researcher
+- **Story**: Final cutscene and relationship resolution
+- **Ending**: Player choice influences final relationship dynamic
 
 ## Audio Design
 
 ### Dynamic Balance Audio
+
 - **Stable**: Calm mechanical humming
 - **Unstable**: Increasing tension, warning beeps
 - **Falling**: Dramatic failure sound, silence before restart
 
 ### Environmental Audio
+
 - **Wind**: Directional audio indicates strength and direction
 - **Electrical**: Crackling increases as pole approaches danger
 - **Robots**: Each type has distinct audio signature
 - **Footsteps**: Change based on surface and movement speed
 
 ### Music System
+
 - **Exploration**: Ambient, contemplative tracks
 - **Tension**: Builds when enemies are near
 - **Action**: Energetic during chase sequences
@@ -242,18 +281,21 @@ Balance State = (Pole Angle + Movement Velocity + External Forces) / Stability T
 ## Visual Design Guidelines
 
 ### HOPE's Design
+
 - **Silhouette**: Clearly readable against any background
 - **Pole**: High contrast, always visible
 - **Balance State**: Posture and pole angle indicate stability
 - **Emotion**: Subtle animations show curiosity, determination, concern
 
 ### Environment Art
+
 - **Clarity**: Gameplay elements clearly distinguished from decoration
 - **Depth**: Parallax backgrounds suggest larger world
 - **Storytelling**: Environmental details tell story without text
 - **Accessibility**: High contrast, colorblind-friendly palette
 
 ### UI Elements
+
 - **Balance Indicator**: Subtle visual cue, not intrusive
 - **Interaction Prompts**: Appear only when in range
 - **Camera Guides**: Subtle indicators for look-ahead areas
@@ -262,18 +304,21 @@ Balance State = (Pole Angle + Movement Velocity + External Forces) / Stability T
 ## Technical Implementation Notes
 
 ### Physics Considerations
+
 - **Pole Simulation**: Use Godot's RigidBody2D with custom constraints
 - **Balance Calculation**: Real-time physics with stability thresholds
 - **Collision Detection**: Precise collision for pole and HOPE separately
 - **Performance**: Optimize for 60fps on target platforms
 
 ### Input Handling
+
 - **Controller Support**: Xbox, PlayStation, generic gamepad compatibility
 - **Dead Zone Configuration**: User-adjustable for accessibility
 - **Input Buffering**: Brief buffer for precise timing actions
 - **Rumble Feedback**: Contextual vibration for balance and danger
 
 ### Save System
+
 - **Checkpoint**: Auto-save at room entry
 - **Progress**: Track completed rooms and story beats
 - **Settings**: Persist control preferences and accessibility options
