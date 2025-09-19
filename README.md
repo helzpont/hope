@@ -26,12 +26,14 @@ The left stick is interpreted as two concentric input zones that correspond to t
 - **High Skill Moves**: Actions requiring precise timing and coordination
 - **Advanced Techniques**: Learned through progression and practice
 
-#### Outer Circle (>=90% magnitude) 
+#### Outer Circle (>=90% magnitude)
+
 - **Simple Actions**: Basic directional holds and force-based movements
 - **Natural Input**: Leverages players' tendency to use max stick magnitude
 - **Beginner Friendly**: Accessible actions available from start
 
 #### Transition Zone (85-95% magnitude)
+
 - **Hysteresis Buffer**: Prevents flickering between circles during complex motions
 - **Smooth Execution**: Maintains current circle state until clear threshold crossed
 - **Enhanced Reliability**: Essential for consistent multi-directional patterns

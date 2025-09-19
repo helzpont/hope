@@ -160,6 +160,7 @@ Hysteresis Logic: Once in outer circle, requires <85% to return to inner circle
 ## Core Systems Design
 
 ### Save System
+
 ```
 Auto-Save Triggers:
 - Room completion
@@ -181,6 +182,7 @@ Technical Requirements:
 ```
 
 ### Audio System Design
+
 ```
 Dynamic Music Layers:
 - Base ambient track (always playing)
@@ -201,6 +203,7 @@ Accessibility Audio:
 ```
 
 ### Performance Targets
+
 ```
 Frame Rate: 60fps minimum on target hardware
 Resolution: 1920x1080 native, scalable to 1280x720
@@ -216,6 +219,7 @@ Optimization Priorities:
 ```
 
 ### Tutorial and Onboarding System
+
 ```
 Tutorial Progression:
 Room 1: Basic movement (inner circle only)
@@ -239,6 +243,7 @@ Teaching Methodology:
 ```
 
 ### Accessibility Design (Non-Controller)
+
 ```
 Visual Accessibility:
 - High contrast mode for UI elements
@@ -264,6 +269,7 @@ Cognitive Accessibility:
 ## Technical Simplifications
 
 ### Removed Over-Engineering
+
 ```
 Eliminated Excessive Precision:
 - Removed exact pixel measurements (now relative values)

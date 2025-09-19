@@ -115,16 +115,16 @@ var circle_history: Array[InputCircle] = []
 func process_input(stick_input: Vector2) -> Dictionary:
     var magnitude = stick_input.length()
     var direction = stick_input.normalized() if magnitude > dead_zone else Vector2.ZERO
-    
+
     var detected_circle = _determine_circle_with_hysteresis(magnitude)
     var complexity = _get_complexity_level(detected_circle)
     var is_transition = _check_transition(detected_circle)
-    
+
     if is_transition:
         _handle_circle_transition(current_circle, detected_circle)
-    
+
     _update_circle_state(detected_circle)
-    
+
     return {
         "circle": current_circle,
         "direction": direction,
@@ -137,7 +137,7 @@ func process_input(stick_input: Vector2) -> Dictionary:
 func _determine_circle_with_hysteresis(magnitude: float) -> InputCircle:
     if magnitude < dead_zone:
         return InputCircle.NONE
-    
+
     # Apply hysteresis to prevent flickering during complex motions
     match current_circle:
         InputCircle.OUTER:
@@ -199,27 +199,27 @@ func _setup_core_move_set():
         "circle": DualCircleInputDetector.InputCircle.INNER,
         "complexity": "basic"
     }
-    
+
     core_patterns["sprint"] = {
-        "type": "hold", 
+        "type": "hold",
         "circle": DualCircleInputDetector.InputCircle.OUTER,
         "complexity": "basic"
     }
-    
+
     core_patterns["pole_vault"] = {
         "type": "sequence",
         "pattern": ["down", "down_forward", "forward"],
         "circle": DualCircleInputDetector.InputCircle.INNER,
         "complexity": "intermediate"
     }
-    
+
     core_patterns["spinning_swipe"] = {
         "type": "sequence",
         "pattern": ["forward", "down", "down_forward"],
         "circle": DualCircleInputDetector.InputCircle.INNER,
         "complexity": "advanced"
     }
-    
+
     # Removed overly complex patterns (270° rotations, etc.)
     # Focus on 6 core moves that feel good to execute
 ```
