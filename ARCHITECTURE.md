@@ -89,6 +89,7 @@ func _check_for_patterns():
 ### 1. Refined Dual-Circle Input System
 
 #### DualCircleInputDetector Class
+
 ```gdscript
 # scripts/systems/DualCircleInputDetector.gd
 extends Node
@@ -104,6 +105,7 @@ enum InputCircle {
 }
 
 @export var circle_threshold: float = 0.9  # 90% magnitude threshold
+@export var hysteresis_buffer: float = 0.05  # 5% buffer to prevent flickering
 @export var dead_zone: float = 0.1
 
 var current_circle: InputCircle = InputCircle.NONE
@@ -114,7 +116,7 @@ func process_input(stick_input: Vector2) -> Dictionary:
     var magnitude = stick_input.length()
     var direction = stick_input.normalized() if magnitude > dead_zone else Vector2.ZERO
     
-    var detected_circle = _determine_circle(magnitude)
+    var detected_circle = _determine_circle_with_hysteresis(magnitude)
     var complexity = _get_complexity_level(detected_circle)
     var is_transition = _check_transition(detected_circle)
     
@@ -129,16 +131,36 @@ func process_input(stick_input: Vector2) -> Dictionary:
         "magnitude": magnitude,
         "complexity_level": complexity,
         "is_transition": is_transition,
-        "raw_input": stick_input
+        "in_transition_zone": _is_in_transition_zone(magnitude)
     }
 
-func _determine_circle(magnitude: float) -> InputCircle:
+func _determine_circle_with_hysteresis(magnitude: float) -> InputCircle:
     if magnitude < dead_zone:
         return InputCircle.NONE
-    elif magnitude < circle_threshold:
-        return InputCircle.INNER  # Complex moves (<90%)
-    else:
-        return InputCircle.OUTER  # Simple moves (>=90%)
+    
+    # Apply hysteresis to prevent flickering during complex motions
+    match current_circle:
+        InputCircle.OUTER:
+            # Once in outer circle, need to drop below 85% to return to inner
+            if magnitude < (circle_threshold - hysteresis_buffer):
+                return InputCircle.INNER
+            else:
+                return InputCircle.OUTER
+        InputCircle.INNER:
+            # From inner circle, need to exceed 90% to reach outer
+            if magnitude >= circle_threshold:
+                return InputCircle.OUTER
+            else:
+                return InputCircle.INNER
+        _:
+            # Initial detection without hysteresis
+            if magnitude >= circle_threshold:
+                return InputCircle.OUTER
+            else:
+                return InputCircle.INNER
+
+func _is_in_transition_zone(magnitude: float) -> bool:
+    return magnitude >= (circle_threshold - hysteresis_buffer) and magnitude <= (circle_threshold + hysteresis_buffer)
 
 func _get_complexity_level(circle: InputCircle) -> String:
     match circle:
@@ -148,12 +170,10 @@ func _get_complexity_level(circle: InputCircle) -> String:
             return "simple"     # Basic directional actions
         _:
             return "none"
-
-func _check_transition(new_circle: InputCircle) -> bool:
-    return current_circle != new_circle and new_circle != InputCircle.NONE
 ```
 
 #### MotionPatternDetector Class
+
 ```gdscript
 # scripts/systems/MotionPatternDetector.gd
 extends Node
@@ -161,101 +181,51 @@ class_name MotionPatternDetector
 
 signal pattern_detected(pattern_name: String)
 
-@export var pattern_timeout: float = 1.2
-@export var directional_tolerance: float = 22.5  # degrees
+# Simplified, tunable parameters (no over-engineering)
+@export var pattern_timeout: float = 1.0  # Tunable through playtesting
+@export var directional_tolerance: float = 30.0  # Generous tolerance
+@export var max_move_count: int = 8  # Limited move set for focus
 
 var motion_buffer: Array[MotionInput] = []
-var pattern_definitions: Dictionary = {}
-
-class MotionInput:
-    var direction: Vector2
-    var magnitude: float
-    var circle: DualCircleInputDetector.InputCircle
-    var timestamp: float
-    
-    func _init(dir: Vector2, mag: float, circ: DualCircleInputDetector.InputCircle, time: float):
-        direction = dir
-        magnitude = mag
-        circle = circ
-        timestamp = time
+var core_patterns: Dictionary = {}
 
 func _ready():
-    _setup_refined_patterns()
+    _setup_core_move_set()
 
-func _setup_refined_patterns():
-    # Simple moves (outer circle - >=90% magnitude)
-    pattern_definitions["walk"] = {
-        "inputs": [{"direction": Vector2.RIGHT, "circle": DualCircleInputDetector.InputCircle.OUTER}],
+func _setup_core_move_set():
+    # Simplified core move set (6-8 moves maximum)
+    core_patterns["walk"] = {
         "type": "hold",
-        "complexity": "simple"
+        "circle": DualCircleInputDetector.InputCircle.INNER,
+        "complexity": "basic"
     }
     
-    pattern_definitions["sprint"] = {
-        "inputs": [{"direction": Vector2.RIGHT, "circle": DualCircleInputDetector.InputCircle.OUTER, "min_magnitude": 0.95}],
-        "type": "hold",
-        "complexity": "simple"
+    core_patterns["sprint"] = {
+        "type": "hold", 
+        "circle": DualCircleInputDetector.InputCircle.OUTER,
+        "complexity": "basic"
     }
     
-    pattern_definitions["stop"] = {
-        "inputs": [{"direction": Vector2.UP, "circle": DualCircleInputDetector.InputCircle.OUTER}],
-        "type": "hold",
-        "complexity": "simple"
-    }
-    
-    pattern_definitions["crouch"] = {
-        "inputs": [{"direction": Vector2.DOWN, "circle": DualCircleInputDetector.InputCircle.OUTER}],
-        "type": "hold",
-        "complexity": "simple"
-    }
-    
-    # Complex moves (inner circle - <90% magnitude)
-    pattern_definitions["pole_vault"] = {
-        "inputs": [
-            {"direction": Vector2.DOWN, "circle": DualCircleInputDetector.InputCircle.INNER},
-            {"direction": Vector2(1, 1).normalized(), "circle": DualCircleInputDetector.InputCircle.INNER},
-            {"direction": Vector2.RIGHT, "circle": DualCircleInputDetector.InputCircle.INNER}
-        ],
+    core_patterns["pole_vault"] = {
         "type": "sequence",
-        "complexity": "complex"
+        "pattern": ["down", "down_forward", "forward"],
+        "circle": DualCircleInputDetector.InputCircle.INNER,
+        "complexity": "intermediate"
     }
     
-    pattern_definitions["spinning_swipe"] = {
-        "inputs": [
-            {"direction": Vector2.RIGHT, "circle": DualCircleInputDetector.InputCircle.INNER},
-            {"direction": Vector2.DOWN, "circle": DualCircleInputDetector.InputCircle.INNER},
-            {"direction": Vector2(1, 1).normalized(), "circle": DualCircleInputDetector.InputCircle.INNER},
-            {"type": "rotation", "degrees": 270, "circle": DualCircleInputDetector.InputCircle.INNER}
-        ],
-        "type": "complex_sequence",
-        "complexity": "complex"
+    core_patterns["spinning_swipe"] = {
+        "type": "sequence",
+        "pattern": ["forward", "down", "down_forward"],
+        "circle": DualCircleInputDetector.InputCircle.INNER,
+        "complexity": "advanced"
     }
     
-    # Mixed circle moves (outer force + inner precision)
-    pattern_definitions["stand_up"] = {
-        "inputs": [
-            {"type": "full_rotation", "circle": DualCircleInputDetector.InputCircle.OUTER},
-            {"direction": Vector2.UP, "circle": DualCircleInputDetector.InputCircle.INNER}
-        ],
-        "type": "mixed_complexity",
-        "complexity": "mixed"
-    }
-
-func add_input(direction: Vector2, magnitude: float, circle: DualCircleInputDetector.InputCircle):
-    var current_time = Time.get_time_dict_from_system()
-    motion_buffer.append(MotionInput.new(direction, magnitude, circle, current_time))
-    
-    _clean_expired_inputs()
-    _check_all_patterns()
-
-func _check_all_patterns():
-    for pattern_name in pattern_definitions:
-        if _matches_pattern(pattern_name, pattern_definitions[pattern_name]):
-            pattern_detected.emit(pattern_name)
-            _clear_relevant_buffer(pattern_name)
-            break
+    # Removed overly complex patterns (270° rotations, etc.)
+    # Focus on 6 core moves that feel good to execute
 ```
 
 #### InputManager Class (No Stick Clicks)
+
 ```gdscript
 # scripts/systems/InputManager.gd
 extends Node
@@ -282,7 +252,7 @@ func _ready():
     motion_pattern_detector = MotionPatternDetector.new()
     add_child(dual_circle_detector)
     add_child(motion_pattern_detector)
-    
+
     _detect_controllers()
     _setup_input_mapping()
 
@@ -303,15 +273,15 @@ func _process_left_stick_input():
         Input.get_joy_axis(current_controller, JOY_AXIS_LEFT_X),
         Input.get_joy_axis(current_controller, JOY_AXIS_LEFT_Y)
     )
-    
+
     var input_data = dual_circle_detector.process_input(raw_input)
     dual_circle_input_detected.emit(input_data)
-    
+
     # Send to motion detector for pattern recognition
     if input_data.circle != DualCircleInputDetector.InputCircle.NONE:
         motion_pattern_detector.add_input(
-            input_data.direction, 
-            input_data.magnitude, 
+            input_data.direction,
+            input_data.magnitude,
             input_data.circle
         )
 
@@ -321,12 +291,12 @@ func _process_right_stick_camera():
         Input.get_joy_axis(current_controller, JOY_AXIS_RIGHT_X),
         Input.get_joy_axis(current_controller, JOY_AXIS_RIGHT_Y)
     )
-    
+
     if camera_input.length() > right_stick_dead_zone:
         camera_input_changed.emit(camera_input)
 ```
-````markdown
 
+````markdown
 ### 2. Physics System
 
 #### Balance System Architecture
@@ -811,3 +781,4 @@ func _get_default_save_data() -> Dictionary:
 - Asset validation and optimization
 
 This architecture provides a solid foundation for developing HOPE while maintaining code quality, performance, and extensibility. Each system is designed to be modular and testable, supporting the test-driven development approach outlined in the project documentation.
+````

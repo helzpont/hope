@@ -22,22 +22,27 @@ The left stick is interpreted as two concentric input zones that correspond to t
 
 #### Inner Circle (<90% magnitude)
 
-- **Basic Movement**: 8-directional movement at normal speed
-- **Simple Actions**: Single-direction holds for basic pole positions
-- **Low Effort Moves**: Actions that require minimal physical exertion
-
-#### Outer Circle (>=90% magnitude)
-
 - **Complex Motions**: Multi-directional patterns for advanced techniques
-- **High Effort Moves**: Actions requiring significant mechanical force
-- **Precision Inputs**: Demanding movements that test player skill
+- **High Skill Moves**: Actions requiring precise timing and coordination
+- **Advanced Techniques**: Learned through progression and practice
+
+#### Outer Circle (>=90% magnitude) 
+- **Simple Actions**: Basic directional holds and force-based movements
+- **Natural Input**: Leverages players' tendency to use max stick magnitude
+- **Beginner Friendly**: Accessible actions available from start
+
+#### Transition Zone (85-95% magnitude)
+- **Hysteresis Buffer**: Prevents flickering between circles during complex motions
+- **Smooth Execution**: Maintains current circle state until clear threshold crossed
+- **Enhanced Reliability**: Essential for consistent multi-directional patterns
 
 ### Movement System (Arcade-Style)
 
-- **Magnitude-Based Response**: Input strength and motion controls determines action complexity
-- **Realistic Effort Mapping**: Difficult mechanical moves require more demanding inputs
-- **Visual Polish**: Animations reflect the mechanical effort of each action
-- **Consistent Feedback**: Clear distinction between inner and outer circle responses
+- **Responsive Controls**: <16ms input latency for immediate feedback
+- **Magnitude-Based Response**: Input strength determines available action set
+- **Visual Polish**: Clear animations and feedback for all interactions
+- **Consistent Feedback**: Distinct visual/audio cues for circle transitions
+- **Accessibility Focus**: Colorblind-friendly design with subtitle support
 
 ### Motion-Based Actions
 
