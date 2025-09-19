@@ -40,6 +40,63 @@ Maximum Pattern Time: 1.0 seconds from first to last input
   - **Vertical**: Camera zoom (0.8x to 1.5x)
   - **Click**: Interact with nearby objects
 
+### Dual-Circle Input System
+
+#### Input Philosophy
+
+- **Mechanical Realism**: Input difficulty matches physical effort required
+- **Magnitude-Based Actions**: Stick pressure determines action complexity
+- **Intuitive Mapping**: Harder moves require more demanding inputs
+- **Progressive Complexity**: Advanced techniques build on basic movements
+
+#### Circle Definitions
+
+```
+Inner Circle: 0% to 70% stick magnitude
+- Basic movements and low-effort actions
+- Continuous directional input
+- Simple pole positioning
+
+Outer Circle: 70% to 97% stick magnitude  
+- Complex motion patterns
+- High-effort mechanical actions
+- Advanced pole techniques
+- Precision timing requirements
+
+Dead Zone: 0% to 10% magnitude (no input registered)
+Maximum Range: 97% magnitude (prevents accidental max input)
+```
+
+#### Input Detection System
+
+```
+Motion Buffer: 0.8 second window for pattern completion
+Circle Transition Tolerance: ±5% magnitude variance
+Directional Tolerance: ±22.5° angle variance
+Minimum Hold Time: 0.15 seconds for circle registration
+Pattern Timeout: 1.2 seconds maximum for complex sequences
+```
+
+### Control Mapping Specification
+
+#### Left Stick Dual-Circle System
+
+- **Inner Circle (0-70%)**: Basic movement and simple actions
+  - **Directional Hold**: Continuous movement at base speed
+  - **Simple Patterns**: Single-direction actions (crouch, reach)
+  - **Low Effort**: Actions requiring minimal mechanical force
+
+- **Outer Circle (70-97%)**: Advanced techniques and complex motions
+  - **Motion Patterns**: Multi-directional sequences for special moves
+  - **High Effort**: Actions requiring significant mechanical exertion
+  - **Precision Timing**: Demanding inputs that test player coordination
+
+#### Right Stick (Standard)
+
+- **Horizontal**: Camera pan (-45° to +45°)
+- **Vertical**: Camera zoom (0.8x to 1.5x)
+- **Click**: Interact with nearby objects
+
 ### Move System Specification
 
 #### Basic Moves (Always Available)
@@ -48,50 +105,76 @@ Maximum Pattern Time: 1.0 seconds from first to last input
 2. **Crouch**: Hold Down - 60 pixels/second, lower collision box
 3. **Reach**: Hold Up - Extend pole upward, activate high switches
 
-#### Learned Moves (Introduced via Cutscenes)
+#### Inner Circle Moves (0-70% magnitude)
 
-##### Pole Vault (Room 3)
+1. **Walk**: Hold direction - 120 pixels/second movement
+2. **Crouch**: Hold down - Pole drops naturally, 60 pixels/second
+3. **Reach**: Hold up - Simple pole extension for high objects
+4. **Lean**: Hold diagonal - Slight pole angle adjustment
 
-- **Input**: ↓↘→ (Down, Down-Forward, Forward)
-- **Effect**: Leap forward 200 pixels, clear 80-pixel height obstacles
-- **Duration**: 0.8 seconds total animation
-- **Cooldown**: 0.2 seconds before next move
+#### Circle Transition Moves (Inner → Outer)
 
-##### Spinning Swipe (Room 5)
+1. **Stand Up**: Full outer circle rotation + inner circle up
+   - **Mechanical Logic**: Requires full effort to lift pole from ground
+   - **Input**: Outer circle 360° + inner circle ↑
+   - **Duration**: 1.2 seconds total animation
+   - **Effect**: Return to standing from crouch position
 
-- **Input**: →↓↘ (Forward, Down, Down-Forward)
-- **Effect**: 360° attack, 100-pixel radius, destroys multiple enemies
-- **Duration**: 1.0 seconds total animation
-- **Cooldown**: 0.5 seconds before next move
+2. **Pole Swing**: Inner circle direction + outer circle opposite
+   - **Mechanical Logic**: Momentum transfer from body to pole
+   - **Input**: Inner ← + outer →, or inner → + outer ←
+   - **Duration**: 0.8 seconds
+   - **Effect**: Wide horizontal pole sweep
 
-##### Wall Slide (Room 7)
+#### Outer Circle Moves (70-97% magnitude)
 
-- **Input**: ←↙↓ (Back, Down-Back, Down) near wall
-- **Effect**: Controlled descent at 80 pixels/second
-- **Duration**: Until reaching ground or input released
-- **Requirement**: Must be within 20 pixels of wall
+1. **Pole Vault**: Outer circle ↓↘→
+   - **Mechanical Logic**: Plant pole with force, vault over
+   - **Duration**: 1.0 seconds total animation
+   - **Distance**: 200 pixels forward, 80 pixels height clearance
+   - **Cooldown**: 0.3 seconds
 
-##### Pole Plant (Room 10)
+2. **Spinning Swipe**: Outer circle →↓↘ + 270° rotation
+   - **Mechanical Logic**: Full-body spinning motion with pole extended
+   - **Duration**: 1.2 seconds total animation
+   - **Range**: 360° attack, 120-pixel radius
+   - **Cooldown**: 0.6 seconds
 
-- **Input**: ↓↑ (Down, Up)
-- **Effect**: Anchor in place, immune to moving platform effects
-- **Duration**: Until input released or 5 seconds maximum
-- **Visual**: Pole extends into ground, HOPE becomes stationary
+3. **Wall Slide**: Outer circle ←↙↓ (near wall)
+   - **Mechanical Logic**: Brace pole against wall with controlled pressure
+   - **Duration**: Continuous until ground contact
+   - **Speed**: 80 pixels/second descent
+   - **Requirement**: Within 25 pixels of wall surface
 
-##### Sweep Attack (Room 12)
+4. **Pole Plant**: Outer circle ↓ (hold 0.5s) + inner circle ↑
+   - **Mechanical Logic**: Drive pole into ground, then precise positioning
+   - **Duration**: Until released or 8 seconds maximum
+   - **Effect**: Immunity to platform movement, stationary anchor
+   - **Visual**: Pole extends deep into ground
 
-- **Input**: ↘→↗ (Down-Forward, Forward, Up-Forward)
-- **Effect**: Low horizontal attack, 150-pixel range, hits ground-level enemies
-- **Duration**: 0.6 seconds total animation
-- **Cooldown**: 0.3 seconds before next move
+5. **Sweep Attack**: Outer circle ↘→↗
+   - **Mechanical Logic**: Low sweeping motion requiring full extension
+   - **Duration**: 0.8 seconds total animation
+   - **Range**: 180° arc, 150-pixel reach, ground level only
+   - **Cooldown**: 0.4 seconds
 
-#### Advanced Combinations (Room 15+)
+#### Advanced Combination Moves (Room 15+)
 
-- **Vault-Swipe**: Pole Vault immediately followed by Spinning Swipe
-- **Plant-Sweep**: Pole Plant to stabilize, then Sweep Attack
-- **Slide-Vault**: Wall Slide into Pole Vault for momentum preservation
+1. **Vault-Spin Combo**: Pole Vault + immediate Spinning Swipe
+   - **Input**: Outer ↓↘→ + outer →↓↘ + rotation
+   - **Timing Window**: 0.2 seconds between moves
+   - **Effect**: Aerial spinning attack after vault
 
-## Enemy Behaviors
+2. **Plant-Sweep Combo**: Pole Plant + Sweep Attack
+   - **Input**: Outer ↓ (hold) + inner ↑ + outer ↘→↗
+   - **Effect**: Anchored position allows extended sweep range
+
+3. **Recovery Stand**: Emergency stand-up from any position
+   - **Input**: Outer circle double rotation + inner ↑
+   - **Use Case**: Quick recovery from knockdown or awkward position
+   - **Duration**: 0.6 seconds (faster than normal stand-up)
+
+### Enemy Behaviors
 
 ### Patrol Bots
 

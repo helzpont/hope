@@ -23,20 +23,24 @@ GUT = "res://addons/gut/gut.gd"
 ```
 tests/
 ├── unit/
-│   ├── test_motion_input.gd
+│   ├── test_dual_circle_input.gd
+│   ├── test_motion_detection.gd
+│   ├── test_circle_transitions.gd
 │   ├── test_move_system.gd
-│   ├── test_player_controller.gd
 │   └── test_enemy_ai.gd
 ├── integration/
 │   ├── test_room_progression.gd
 │   ├── test_cutscene_system.gd
+│   ├── test_complex_moves.gd
 │   └── test_training_rooms.gd
 ├── performance/
+│   ├── test_input_performance.gd
 │   ├── test_animation_performance.gd
 │   └── test_memory_usage.gd
 └── accessibility/
     ├── test_controller_support.gd
-    ├── test_motion_tolerance.gd
+    ├── test_magnitude_tolerance.gd
+    ├── test_circle_feedback.gd
     └── test_visual_feedback.gd
 ```
 
@@ -47,38 +51,82 @@ tests/
 Before implementing any feature, write tests that define the expected behavior.
 
 ```gdscript
-# Example: test_motion_input.gd
+# Example: test_dual_circle_input.gd
 extends GutTest
 
-func test_pole_vault_motion_detection():
-    var motion_detector = MotionInputDetector.new()
-    var input_sequence = [Vector2.DOWN, Vector2(1, 1), Vector2.RIGHT]
+func test_inner_circle_detection():
+    var dual_circle = DualCircleInput.new()
+    var input = Vector2(0.5, 0.0)  # 50% magnitude
     
-    var result = motion_detector.detect_pattern(input_sequence)
+    var result = dual_circle.process_stick_input(input)
     
-    assert_eq(result, "pole_vault", "Down-DownForward-Forward should trigger pole vault")
+    assert_eq(result.circle, DualCircleInput.InputCircle.INNER, "50% magnitude should be inner circle")
 
-func test_motion_input_tolerance():
-    var motion_detector = MotionInputDetector.new()
-    # Slightly imprecise input (within tolerance)
-    var input_sequence = [Vector2(0, 1), Vector2(0.8, 0.8), Vector2(0.9, 0)]
+func test_outer_circle_detection():
+    var dual_circle = DualCircleInput.new()
+    var input = Vector2(0.8, 0.0)  # 80% magnitude
     
-    var result = motion_detector.detect_pattern(input_sequence)
+    var result = dual_circle.process_stick_input(input)
     
-    assert_eq(result, "pole_vault", "Imprecise input within tolerance should still work")
+    assert_eq(result.circle, DualCircleInput.InputCircle.OUTER, "80% magnitude should be outer circle")
 
-func test_motion_input_timing():
-    var motion_detector = MotionInputDetector.new()
-    motion_detector.max_pattern_time = 1.0
+func test_circle_transition_detection():
+    var dual_circle = DualCircleInput.new()
     
-    # Simulate inputs over time
-    motion_detector.add_input(Vector2.DOWN, 0.0)
-    motion_detector.add_input(Vector2(1, 1), 0.3)
-    motion_detector.add_input(Vector2.RIGHT, 0.6)
+    # First input in inner circle
+    var result1 = dual_circle.process_stick_input(Vector2(0.5, 0.0))
+    # Second input in outer circle
+    var result2 = dual_circle.process_stick_input(Vector2(0.8, 0.0))
+    
+    assert_true(result2.is_transition, "Should detect transition from inner to outer circle")
+
+func test_stand_up_motion_pattern():
+    var motion_detector = MotionDetector.new()
+    
+    # Simulate full outer circle rotation
+    _simulate_full_outer_rotation(motion_detector)
+    # Follow with inner circle up
+    motion_detector.add_input(Vector2.UP, 0.5, DualCircleInput.InputCircle.INNER)
     
     var result = motion_detector.check_for_patterns()
     
-    assert_eq(result, "pole_vault", "Inputs within time window should register")
+    assert_eq(result, "stand_up", "Full outer rotation + inner up should trigger stand up")
+
+func test_magnitude_boundary_tolerance():
+    var dual_circle = DualCircleInput.new()
+    
+    # Test boundary between inner and outer (70% ± tolerance)
+    var boundary_input = Vector2(0.69, 0.0)  # Just below boundary
+    var result1 = dual_circle.process_stick_input(boundary_input)
+    
+    var boundary_input2 = Vector2(0.71, 0.0)  # Just above boundary
+    var result2 = dual_circle.process_stick_input(boundary_input2)
+    
+    assert_eq(result1.circle, DualCircleInput.InputCircle.INNER, "69% should be inner circle")
+    assert_eq(result2.circle, DualCircleInput.InputCircle.OUTER, "71% should be outer circle")
+
+func test_complex_move_input_sequence():
+    var motion_detector = MotionDetector.new()
+    
+    # Test Pole Vault: Outer circle ↓↘→
+    motion_detector.add_input(Vector2.DOWN, 0.8, DualCircleInput.InputCircle.OUTER)
+    motion_detector.add_input(Vector2(1, 1).normalized(), 0.85, DualCircleInput.InputCircle.OUTER)
+    motion_detector.add_input(Vector2.RIGHT, 0.9, DualCircleInput.InputCircle.OUTER)
+    
+    var result = motion_detector.check_for_patterns()
+    
+    assert_eq(result, "pole_vault", "Outer circle ↓↘→ should trigger pole vault")
+
+func _simulate_full_outer_rotation(detector: MotionDetector):
+    # Simulate 8-point rotation in outer circle
+    var directions = [
+        Vector2.UP, Vector2(1, -1).normalized(), Vector2.RIGHT,
+        Vector2(1, 1).normalized(), Vector2.DOWN, Vector2(-1, 1).normalized(),
+        Vector2.LEFT, Vector2(-1, -1).normalized()
+    ]
+    
+    for i in range(directions.size()):
+        detector.add_input(directions[i], 0.8, DualCircleInput.InputCircle.OUTER)
 ```
 
 ### 2. Green Phase: Implement Minimum Code
@@ -86,34 +134,38 @@ func test_motion_input_timing():
 Write just enough code to make the tests pass.
 
 ```gdscript
-# MotionInputDetector.gd - minimal implementation
-class_name MotionInputDetector
+# DualCircleInput.gd - minimal implementation
+class_name DualCircleInput
 
-var max_pattern_time: float = 0.5
-var input_tolerance: float = 0.3
+enum InputCircle { NONE, INNER, OUTER }
 
-var input_sequence: Array = []
-var pattern_detected: String = ""
+@export var inner_max: float = 0.7
+@export var outer_min: float = 0.7
+@export var outer_max: float = 0.97
 
-func detect_pattern(inputs: Array) -> String:
-    input_sequence = inputs
-    _check_for_pole_vault()
-    return pattern_detected
+var previous_circle: InputCircle = InputCircle.NONE
 
-func _check_for_pole_vault():
-    if input_sequence.size() < 3:
-        return
+func process_stick_input(input: Vector2) -> Dictionary:
+    var magnitude = input.length()
+    var circle = _get_circle_from_magnitude(magnitude)
+    var is_transition = (circle != previous_circle and circle != InputCircle.NONE)
+    
+    previous_circle = circle
+    
+    return {
+        "circle": circle,
+        "direction": input.normalized(),
+        "magnitude": magnitude,
+        "is_transition": is_transition
+    }
 
-    if _is_tilted_down(input_sequence[0]) and
-       _is_tilted_down(input_sequence[1], true) and
-       _is_tilted_right(input_sequence[2]):
-        pattern_detected = "pole_vault"
-
-func _is_tilted_down(input_vec: Vector2, strict: bool = false) -> bool:
-    return (strict ? input_vec.y < -0.7 : input_vec.y > 0.7) and abs(input_vec.x) < 0.3
-
-func _is_tilted_right(input_vec: Vector2) -> bool:
-    return input_vec.x > 0.7 and abs(input_vec.y) < 0.3
+func _get_circle_from_magnitude(mag: float) -> InputCircle:
+    if mag <= inner_max:
+        return InputCircle.INNER
+    elif mag >= outer_min and mag <= outer_max:
+        return InputCircle.OUTER
+    else:
+        return InputCircle.NONE
 ```
 
 ### 3. Refactor Phase: Improve Code Quality
@@ -121,36 +173,38 @@ func _is_tilted_right(input_vec: Vector2) -> bool:
 Enhance the implementation while maintaining test coverage.
 
 ```gdscript
-# Improved MotionInputDetector.gd
-class_name MotionInputDetector
+# Improved DualCircleInput.gd
+class_name DualCircleInput
 
-@export var max_pattern_time: float = 0.5
-@export var input_tolerance: float = 0.3
+enum InputCircle { NONE, INNER, OUTER }
 
-var input_sequence: Array = []
-var pattern_detected: String = ""
+@export var inner_max: float = 0.7
+@export var outer_min: float = 0.7
+@export var outer_max: float = 0.97
 
-func detect_pattern(inputs: Array) -> String:
-    input_sequence = inputs
-    _check_for_pole_vault()
-    return pattern_detected
+var previous_circle: InputCircle = InputCircle.NONE
 
-func _check_for_pole_vault():
-    if input_sequence.size() < 3:
-        return
+func process_stick_input(input: Vector2) -> Dictionary:
+    var magnitude = input.length()
+    var circle = _get_circle_from_magnitude(magnitude)
+    var is_transition = (circle != previous_circle and circle != InputCircle.NONE)
+    
+    previous_circle = circle
+    
+    return {
+        "circle": circle,
+        "direction": input.normalized(),
+        "magnitude": magnitude,
+        "is_transition": is_transition
+    }
 
-    if _is_tilted_down(input_sequence[0]) and
-       _is_tilted_down(input_sequence[1], true) and
-       _is_tilted_right(input_sequence[2]):
-        pattern_detected = "pole_vault"
+func _get_circle_from_magnitude(mag: float) -> InputCircle:
+    if mag <= inner_max:
+        return InputCircle.INNER
+    elif mag >= outer_min and mag <= outer_max:
+        return InputCircle.OUTER
     else:
-        pattern_detected = ""
-
-func _is_tilted_down(input_vec: Vector2, strict: bool = false) -> bool:
-    return (strict ? input_vec.y < -0.7 : input_vec.y > 0.7) and abs(input_vec.x) < 0.3
-
-func _is_tilted_right(input_vec: Vector2) -> bool:
-    return input_vec.x > 0.7 and abs(input_vec.y) < 0.3
+        return InputCircle.NONE
 ```
 
 ## Core System Test Suites
@@ -168,29 +222,29 @@ func before_each():
 
 func test_pole_vault_motion_detection():
     var input_sequence = [Vector2.DOWN, Vector2(1, 1), Vector2.RIGHT]
-    
+
     var result = motion_detector.detect_pattern(input_sequence)
-    
+
     assert_eq(result, "pole_vault", "Down-DownForward-Forward should trigger pole vault")
 
 func test_motion_input_tolerance():
     # Slightly imprecise input (within tolerance)
     var input_sequence = [Vector2(0, 1), Vector2(0.8, 0.8), Vector2(0.9, 0)]
-    
+
     var result = motion_detector.detect_pattern(input_sequence)
-    
+
     assert_eq(result, "pole_vault", "Imprecise input within tolerance should still work")
 
 func test_motion_input_timing():
     motion_detector.max_pattern_time = 1.0
-    
+
     # Simulate inputs over time
     motion_detector.add_input(Vector2.DOWN, 0.0)
     motion_detector.add_input(Vector2(1, 1), 0.3)
     motion_detector.add_input(Vector2.RIGHT, 0.6)
-    
+
     var result = motion_detector.check_for_patterns()
-    
+
     assert_eq(result, "pole_vault", "Inputs within time window should register")
 ```
 
@@ -502,18 +556,18 @@ func test_pole_vault_motion_detection_with_tolerance():
     var motion_detector = MotionInputDetector.new()
     motion_detector.input_tolerance = 0.2
     var input_sequence = [Vector2.DOWN, Vector2(0.9, 0.9), Vector2.RIGHT]
-    
+
     var result = motion_detector.detect_pattern(input_sequence)
-    
+
     assert_eq(result, "pole_vault", "Down-DownForward-Forward with tolerance should trigger pole vault")
 
 func test_excessive_input_tolerance():
     var motion_detector = MotionInputDetector.new()
     motion_detector.input_tolerance = 0.1
     var input_sequence = [Vector2.DOWN, Vector2(0.95, 0.95), Vector2.RIGHT]
-    
+
     var result = motion_detector.detect_pattern(input_sequence)
-    
+
     assert_ne(result, "pole_vault", "Excessive input should not trigger pole vault")
 ```
 

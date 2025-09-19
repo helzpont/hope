@@ -7,6 +7,7 @@ HOPE is built using Godot 4.x with a focus on arcade-style movement, fighting ga
 ## System Architecture
 
 ### High-Level Component Diagram
+
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │   Input Layer   │    │ Movement Layer  │    │ Presentation    │
@@ -31,6 +32,7 @@ HOPE is built using Godot 4.x with a focus on arcade-style movement, fighting ga
 ### 1. Motion Input System
 
 #### MotionInputDetector Class
+
 ```gdscript
 # scripts/systems/MotionInputDetector.gd
 extends Node
@@ -48,7 +50,7 @@ var known_patterns: Dictionary = {}
 class MotionInput:
     var direction: Vector2
     var timestamp: float
-    
+
     func _init(dir: Vector2, time: float):
         direction = dir
         timestamp = time
@@ -67,10 +69,10 @@ func _setup_motion_patterns():
 func add_input(direction: Vector2):
     if direction.length() < minimum_input_magnitude:
         return
-    
+
     var current_time = Time.get_time_dict_from_system()
     motion_buffer.append(MotionInput.new(direction.normalized(), current_time))
-    
+
     _clean_old_inputs()
     _check_for_patterns()
 
@@ -82,7 +84,173 @@ func _check_for_patterns():
             break
 ```
 
+#### Dual-Circle Input System
+
+##### DualCircleInputDetector Class
+
+```gdscript
+# scripts/systems/DualCircleInputDetector.gd
+extends Node
+class_name DualCircleInputDetector
+
+signal circle_changed(new_circle: InputCircle, previous_circle: InputCircle)
+signal circle_transition_detected(from_circle: InputCircle, to_circle: InputCircle)
+
+enum InputCircle {
+    NONE,
+    INNER,
+    OUTER
+}
+
+@export var inner_circle_max: float = 0.7
+@export var outer_circle_min: float = 0.7
+@export var outer_circle_max: float = 0.97
+@export var dead_zone: float = 0.1
+@export var transition_tolerance: float = 0.05
+
+var current_circle: InputCircle = InputCircle.NONE
+var previous_circle: InputCircle = InputCircle.NONE
+var circle_history: Array[InputCircle] = []
+var transition_buffer: Array[CircleTransition] = []
+
+class CircleTransition:
+    var from_circle: InputCircle
+    var to_circle: InputCircle
+    var timestamp: float
+    var input_direction: Vector2
+    
+    func _init(from: InputCircle, to: InputCircle, time: float, direction: Vector2):
+        from_circle = from
+        to_circle = to
+        timestamp = time
+        input_direction = direction
+
+func process_input(stick_input: Vector2) -> Dictionary:
+    var magnitude = stick_input.length()
+    var direction = stick_input.normalized() if magnitude > dead_zone else Vector2.ZERO
+    
+    var detected_circle = _determine_circle(magnitude)
+    var is_transition = _check_transition(detected_circle)
+    
+    if is_transition:
+        _record_transition(current_circle, detected_circle, direction)
+    
+    _update_circle_state(detected_circle)
+    
+    return {
+        "circle": current_circle,
+        "direction": direction,
+        "magnitude": magnitude,
+        "is_transition": is_transition,
+        "raw_input": stick_input
+    }
+
+func _determine_circle(magnitude: float) -> InputCircle:
+    if magnitude < dead_zone:
+        return InputCircle.NONE
+    elif magnitude <= inner_circle_max:
+        return InputCircle.INNER
+    elif magnitude >= outer_circle_min and magnitude <= outer_circle_max:
+        return InputCircle.OUTER
+    else:
+        return InputCircle.NONE  # Beyond maximum range
+
+func _check_transition(new_circle: InputCircle) -> bool:
+    return current_circle != new_circle and new_circle != InputCircle.NONE
+
+func get_recent_transitions(time_window: float = 1.0) -> Array[CircleTransition]:
+    var current_time = Time.get_time_dict_from_system()
+    return transition_buffer.filter(func(t): return current_time - t.timestamp <= time_window)
+```
+
+##### MotionPatternDetector Class
+
+```gdscript
+# scripts/systems/MotionPatternDetector.gd
+extends Node
+class_name MotionPatternDetector
+
+signal pattern_detected(pattern_name: String)
+
+@export var pattern_timeout: float = 1.2
+@export var directional_tolerance: float = 22.5  # degrees
+
+var motion_buffer: Array[MotionInput] = []
+var pattern_definitions: Dictionary = {}
+
+class MotionInput:
+    var direction: Vector2
+    var magnitude: float
+    var circle: DualCircleInputDetector.InputCircle
+    var timestamp: float
+    
+    func _init(dir: Vector2, mag: float, circ: DualCircleInputDetector.InputCircle, time: float):
+        direction = dir
+        magnitude = mag
+        circle = circ
+        timestamp = time
+
+func _ready():
+    _setup_dual_circle_patterns()
+
+func _setup_dual_circle_patterns():
+    # Inner circle patterns
+    pattern_definitions["walk"] = {
+        "inputs": [{"direction": Vector2.RIGHT, "circle": DualCircleInputDetector.InputCircle.INNER}],
+        "type": "hold"
+    }
+    
+    pattern_definitions["crouch"] = {
+        "inputs": [{"direction": Vector2.DOWN, "circle": DualCircleInputDetector.InputCircle.INNER}],
+        "type": "hold"
+    }
+    
+    # Outer circle patterns
+    pattern_definitions["pole_vault"] = {
+        "inputs": [
+            {"direction": Vector2.DOWN, "circle": DualCircleInputDetector.InputCircle.OUTER},
+            {"direction": Vector2(1, 1).normalized(), "circle": DualCircleInputDetector.InputCircle.OUTER},
+            {"direction": Vector2.RIGHT, "circle": DualCircleInputDetector.InputCircle.OUTER}
+        ],
+        "type": "sequence"
+    }
+    
+    # Circle transition patterns
+    pattern_definitions["stand_up"] = {
+        "inputs": [
+            {"type": "full_rotation", "circle": DualCircleInputDetector.InputCircle.OUTER},
+            {"direction": Vector2.UP, "circle": DualCircleInputDetector.InputCircle.INNER}
+        ],
+        "type": "complex"
+    }
+
+func add_input(direction: Vector2, magnitude: float, circle: DualCircleInputDetector.InputCircle):
+    var current_time = Time.get_time_dict_from_system()
+    motion_buffer.append(MotionInput.new(direction, magnitude, circle, current_time))
+    
+    _clean_expired_inputs()
+    _check_all_patterns()
+
+func _check_all_patterns():
+    for pattern_name in pattern_definitions:
+        if _matches_pattern(pattern_name, pattern_definitions[pattern_name]):
+            pattern_detected.emit(pattern_name)
+            _clear_relevant_buffer(pattern_name)
+            break
+
+func _matches_pattern(pattern_name: String, pattern_def: Dictionary) -> bool:
+    match pattern_def.type:
+        "hold":
+            return _matches_hold_pattern(pattern_def)
+        "sequence":
+            return _matches_sequence_pattern(pattern_def)
+        "complex":
+            return _matches_complex_pattern(pattern_def)
+    return false
+```
+
 #### InputManager Class
+
 ```gdscript
 # scripts/systems/InputManager.gd
 extends Node
@@ -91,13 +259,15 @@ class_name InputManager
 signal movement_input_changed(movement: Vector2)
 signal camera_input_changed(camera: Vector2)
 signal interaction_triggered()
+signal dual_circle_input_detected(input_data: Dictionary)
 
 @export var left_stick_dead_zone: float = 0.1
 @export var right_stick_dead_zone: float = 0.15
 @export var stick_sensitivity: float = 1.0
 
 var current_controller: int = -1
-var motion_detector: MotionInputDetector
+var dual_circle_detector: DualCircleInputDetector
+var motion_pattern_detector: MotionPatternDetector
 var input_buffer: Array[InputEvent] = []
 
 func _ready():
