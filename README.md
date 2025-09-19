@@ -9,57 +9,62 @@ the story is told from HOPE's point of view. the robot is used to study artifici
 ### Core Control System (Stick-Only)
 
 - **Left Stick**: Dual-circle input system for movement and complex pole actions
-  - **Inner Circle** (0-70% magnitude): Basic directional movement and simple actions
-  - **Outer Circle** (70-97% magnitude): Advanced motion inputs for special moves
-  - **Motion Complexity**: Physically realistic difficulty - harder moves require more complex inputs
-- **Right Stick**: Camera control and environmental interaction
+  - **Inner Circle** (<90% magnitude): Basic directional movement and simple actions
+  - **Outer Circle** (>=90% magnitude): Advanced motion inputs for special moves
+  - **Motion Complexity**: Physically realistic difficulty - mechanically harder moves require more complex inputs
+- **Right Stick**: Camera control
   - **Horizontal**: Pan camera to look ahead/behind
   - **Vertical**: Zoom in/out for precision or overview
-  - **Stick Click**: Activate nearby switches, doors, or interactive elements
 
 ### Dual-Circle Input System
+
 The left stick is interpreted as two concentric input zones that correspond to the mechanical effort required for each action:
 
-#### Inner Circle (0-70% magnitude)
+#### Inner Circle (<90% magnitude)
+
 - **Basic Movement**: 8-directional movement at normal speed
 - **Simple Actions**: Single-direction holds for basic pole positions
 - **Low Effort Moves**: Actions that require minimal physical exertion
 
-#### Outer Circle (70-97% magnitude) 
+#### Outer Circle (>=90% magnitude)
+
 - **Complex Motions**: Multi-directional patterns for advanced techniques
 - **High Effort Moves**: Actions requiring significant mechanical force
 - **Precision Inputs**: Demanding movements that test player skill
 
 ### Movement System (Arcade-Style)
 
-- **Magnitude-Based Response**: Input strength determines action complexity
-- **Realistic Effort Mapping**: Difficult moves require more demanding inputs
+- **Magnitude-Based Response**: Input strength and motion controls determines action complexity
+- **Realistic Effort Mapping**: Difficult mechanical moves require more demanding inputs
 - **Visual Polish**: Animations reflect the mechanical effort of each action
 - **Consistent Feedback**: Clear distinction between inner and outer circle responses
 
 ### Motion-Based Actions
 
-HOPE learns new pole techniques throughout the game via motion inputs that reflect mechanical difficulty:
+HOPE learns new pole techniques throughout the game via motion inputs that reflect mechanical difficulty. The assumption is that moves using the inner circle will require more skill than those using the outer circle:
 
-#### Basic Moves (Inner Circle - Available from start)
+#### Basic Moves (Available from start - mostly Outer Circle with some Inner Circle )
 
-- **Walk**: Hold direction in inner circle - Standard movement
-- **Crouch**: Hold down in inner circle - Pole drops, lower profile
-- **Reach**: Hold up in inner circle - Extend pole upward for switches
+- **Walk**: Hold direction in inner circle - Pole leans forward slightly; Standard movement
+- **Sprint**: Hold direction in outer circle - Pole leans forward more; Fast movement
+- **Stop**: Outer circle up - Pole straightens; robot stops (enters neutral position)
+- **Crouch**: Outer circle ↓ - Pole drops, lower profile
 
-#### Intermediate Moves (Mixed Circle Usage)
+Early on, Hope will use the environment to get up. For example, it'll move into an object and the pole will slide up the object.
+
+#### Intermediate Moves (More inner circle usage, but still simple motions)
 
 - **Stand Up**: Full outer circle + full inner circle - Mechanically demanding recovery from crouch
-- **Pole Lean**: Outer circle partial rotation - Precise pole positioning
-- **Quick Turn**: Inner circle direction change - Rapid orientation shift
+- **Pole Lean**: Inner circle partial rotation - Precise pole positioning
+- **Quick Turn**: Outer circle direction change - Rapid orientation shift
 
-#### Advanced Moves (Outer Circle - Learned via cutscenes)
+#### Advanced Moves (Complex motions with inner and/or outer circle usage)
 
 - **Pole Vault**: Outer circle ↓↘→ - High-effort leap requiring full extension
-- **Spinning Swipe**: Outer circle →↓↘ + full rotation - Complex spinning motion
+- **Spinning Swipe**: Outer circle →↓↘ - Complex spinning motion
 - **Wall Slide**: Outer circle ←↙↓ - Controlled descent requiring precise pole angle
-- **Pole Plant**: Outer circle ↓ + inner circle ↑ - Anchor requiring force then precision
 - **Sweep Attack**: Outer circle ↘→↗ - Wide sweeping motion demanding full range
+- tbd
 
 ### Learning System
 
@@ -70,7 +75,7 @@ HOPE learns new pole techniques throughout the game via motion inputs that refle
 
 ### Environmental Challenges
 
-- **Moving Platforms**: Use Pole Plant technique for stability
+- **Moving Platforms**: Use Pole Vault technique for stability
 - **Enemy Encounters**: Combat using learned pole techniques
 - **Vertical Navigation**: Wall Slide and Pole Vault for traversal
 - **Switch Puzzles**: Reach Up and Spinning Swipe for distant/multiple targets

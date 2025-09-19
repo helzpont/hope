@@ -47,7 +47,6 @@ tests/
 ## Test-Driven Development Workflow
 
 ### 1. Red Phase: Write Failing Tests
-
 Before implementing any feature, write tests that define the expected behavior.
 
 ```gdscript
@@ -56,69 +55,102 @@ extends GutTest
 
 func test_inner_circle_detection():
     var dual_circle = DualCircleInput.new()
-    var input = Vector2(0.5, 0.0)  # 50% magnitude
+    var input = Vector2(0.5, 0.0)  # 50% magnitude (<90% threshold)
     
     var result = dual_circle.process_stick_input(input)
     
-    assert_eq(result.circle, DualCircleInput.InputCircle.INNER, "50% magnitude should be inner circle")
+    assert_eq(result.circle, DualCircleInput.InputCircle.INNER, "50% magnitude should be inner circle (complex)")
+    assert_eq(result.complexity_level, "complex", "Inner circle should be complex")
 
 func test_outer_circle_detection():
     var dual_circle = DualCircleInput.new()
-    var input = Vector2(0.8, 0.0)  # 80% magnitude
+    var input = Vector2(0.95, 0.0)  # 95% magnitude (>=90% threshold)
     
     var result = dual_circle.process_stick_input(input)
     
-    assert_eq(result.circle, DualCircleInput.InputCircle.OUTER, "80% magnitude should be outer circle")
+    assert_eq(result.circle, DualCircleInput.InputCircle.OUTER, "95% magnitude should be outer circle (simple)")
+    assert_eq(result.complexity_level, "simple", "Outer circle should be simple")
 
-func test_circle_transition_detection():
+func test_circle_threshold_boundary():
     var dual_circle = DualCircleInput.new()
     
-    # First input in inner circle
-    var result1 = dual_circle.process_stick_input(Vector2(0.5, 0.0))
-    # Second input in outer circle
-    var result2 = dual_circle.process_stick_input(Vector2(0.8, 0.0))
+    # Test just below 90% threshold
+    var result1 = dual_circle.process_stick_input(Vector2(0.89, 0.0))
+    # Test at 90% threshold
+    var result2 = dual_circle.process_stick_input(Vector2(0.9, 0.0))
     
-    assert_true(result2.is_transition, "Should detect transition from inner to outer circle")
+    assert_eq(result1.circle, DualCircleInput.InputCircle.INNER, "89% should be inner circle")
+    assert_eq(result2.circle, DualCircleInput.InputCircle.OUTER, "90% should be outer circle")
 
-func test_stand_up_motion_pattern():
+func test_no_simultaneous_inputs():
+    var controller = HopeController.new()
+    
+    # Simulate left stick input
+    controller.handle_left_stick_input()
+    var left_processed = controller.last_input_processed
+    
+    # Verify only left stick is processed for actions
+    assert_true(left_processed, "Left stick should be processed for movement/actions")
+    assert_false(controller.right_stick_actions_enabled, "Right stick should not trigger actions")
+
+func test_complex_move_inner_circle_only():
     var motion_detector = MotionDetector.new()
     
-    # Simulate full outer circle rotation
+    # Test Pole Vault: Inner circle ↓↘→ (complex move)
+    motion_detector.add_input(Vector2.DOWN, 0.7, DualCircleInput.InputCircle.INNER)
+    motion_detector.add_input(Vector2(1, 1).normalized(), 0.8, DualCircleInput.InputCircle.INNER)
+    motion_detector.add_input(Vector2.RIGHT, 0.6, DualCircleInput.InputCircle.INNER)
+    
+    var result = motion_detector.check_for_patterns()
+    
+    assert_eq(result, "pole_vault", "Inner circle ↓↘→ should trigger pole vault")
+
+func test_simple_move_outer_circle():
+    var controller = HopeController.new()
+    
+    # Test basic movement: Outer circle hold right
+    var input_data = {
+        "circle": DualCircleInput.InputCircle.OUTER,
+        "direction": Vector2.RIGHT,
+        "magnitude": 0.95
+    }
+    
+    controller._handle_simple_movement(input_data.direction, input_data.magnitude)
+    
+    assert_gt(controller.velocity.x, 0, "Outer circle right should move right")
+
+func test_no_stick_click_usage():
+    var input_manager = InputManager.new()
+    
+    # Verify stick clicks are not processed
+    assert_false(input_manager.processes_stick_clicks, "Stick clicks should not be processed")
+    assert_false(input_manager.left_stick_click_enabled, "Left stick click should be disabled")
+    assert_false(input_manager.right_stick_click_enabled, "Right stick click should be disabled")
+
+func test_camera_only_right_stick():
+    var camera_controller = CameraController.new()
+    
+    # Test right stick camera control
+    var right_stick_input = Vector2(0.5, 0.3)
+    camera_controller.process_camera_input(right_stick_input)
+    
+    assert_true(camera_controller.camera_moved, "Right stick should control camera")
+    assert_false(camera_controller.actions_triggered, "Right stick should not trigger actions")
+
+func test_stand_up_mixed_circle_pattern():
+    var motion_detector = MotionDetector.new()
+    
+    # Simulate full outer circle rotation (simple force action)
     _simulate_full_outer_rotation(motion_detector)
-    # Follow with inner circle up
+    # Follow with inner circle up (complex precision action)
     motion_detector.add_input(Vector2.UP, 0.5, DualCircleInput.InputCircle.INNER)
     
     var result = motion_detector.check_for_patterns()
     
-    assert_eq(result, "stand_up", "Full outer rotation + inner up should trigger stand up")
-
-func test_magnitude_boundary_tolerance():
-    var dual_circle = DualCircleInput.new()
-    
-    # Test boundary between inner and outer (70% ± tolerance)
-    var boundary_input = Vector2(0.69, 0.0)  # Just below boundary
-    var result1 = dual_circle.process_stick_input(boundary_input)
-    
-    var boundary_input2 = Vector2(0.71, 0.0)  # Just above boundary
-    var result2 = dual_circle.process_stick_input(boundary_input2)
-    
-    assert_eq(result1.circle, DualCircleInput.InputCircle.INNER, "69% should be inner circle")
-    assert_eq(result2.circle, DualCircleInput.InputCircle.OUTER, "71% should be outer circle")
-
-func test_complex_move_input_sequence():
-    var motion_detector = MotionDetector.new()
-    
-    # Test Pole Vault: Outer circle ↓↘→
-    motion_detector.add_input(Vector2.DOWN, 0.8, DualCircleInput.InputCircle.OUTER)
-    motion_detector.add_input(Vector2(1, 1).normalized(), 0.85, DualCircleInput.InputCircle.OUTER)
-    motion_detector.add_input(Vector2.RIGHT, 0.9, DualCircleInput.InputCircle.OUTER)
-    
-    var result = motion_detector.check_for_patterns()
-    
-    assert_eq(result, "pole_vault", "Outer circle ↓↘→ should trigger pole vault")
+    assert_eq(result, "stand_up", "Outer rotation + inner up should trigger stand up")
 
 func _simulate_full_outer_rotation(detector: MotionDetector):
-    # Simulate 8-point rotation in outer circle
+    # Simulate 8-point rotation in outer circle (simple actions)
     var directions = [
         Vector2.UP, Vector2(1, -1).normalized(), Vector2.RIGHT,
         Vector2(1, 1).normalized(), Vector2.DOWN, Vector2(-1, 1).normalized(),
@@ -126,7 +158,7 @@ func _simulate_full_outer_rotation(detector: MotionDetector):
     ]
     
     for i in range(directions.size()):
-        detector.add_input(directions[i], 0.8, DualCircleInput.InputCircle.OUTER)
+        detector.add_input(directions[i], 0.95, DualCircleInput.InputCircle.OUTER)
 ```
 
 ### 2. Green Phase: Implement Minimum Code
@@ -149,9 +181,9 @@ func process_stick_input(input: Vector2) -> Dictionary:
     var magnitude = input.length()
     var circle = _get_circle_from_magnitude(magnitude)
     var is_transition = (circle != previous_circle and circle != InputCircle.NONE)
-    
+
     previous_circle = circle
-    
+
     return {
         "circle": circle,
         "direction": input.normalized(),
@@ -188,9 +220,9 @@ func process_stick_input(input: Vector2) -> Dictionary:
     var magnitude = input.length()
     var circle = _get_circle_from_magnitude(magnitude)
     var is_transition = (circle != previous_circle and circle != InputCircle.NONE)
-    
+
     previous_circle = circle
-    
+
     return {
         "circle": circle,
         "direction": input.normalized(),

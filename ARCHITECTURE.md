@@ -86,54 +86,40 @@ func _check_for_patterns():
 
 #### Dual-Circle Input System
 
-##### DualCircleInputDetector Class
+### 1. Refined Dual-Circle Input System
 
+#### DualCircleInputDetector Class
 ```gdscript
 # scripts/systems/DualCircleInputDetector.gd
 extends Node
 class_name DualCircleInputDetector
 
 signal circle_changed(new_circle: InputCircle, previous_circle: InputCircle)
-signal circle_transition_detected(from_circle: InputCircle, to_circle: InputCircle)
+signal complexity_level_changed(level: String)
 
 enum InputCircle {
     NONE,
-    INNER,
-    OUTER
+    INNER,    # <90% magnitude - complex moves requiring skill
+    OUTER     # >=90% magnitude - simple moves requiring force
 }
 
-@export var inner_circle_max: float = 0.7
-@export var outer_circle_min: float = 0.7
-@export var outer_circle_max: float = 0.97
+@export var circle_threshold: float = 0.9  # 90% magnitude threshold
 @export var dead_zone: float = 0.1
-@export var transition_tolerance: float = 0.05
 
 var current_circle: InputCircle = InputCircle.NONE
 var previous_circle: InputCircle = InputCircle.NONE
 var circle_history: Array[InputCircle] = []
-var transition_buffer: Array[CircleTransition] = []
-
-class CircleTransition:
-    var from_circle: InputCircle
-    var to_circle: InputCircle
-    var timestamp: float
-    var input_direction: Vector2
-    
-    func _init(from: InputCircle, to: InputCircle, time: float, direction: Vector2):
-        from_circle = from
-        to_circle = to
-        timestamp = time
-        input_direction = direction
 
 func process_input(stick_input: Vector2) -> Dictionary:
     var magnitude = stick_input.length()
     var direction = stick_input.normalized() if magnitude > dead_zone else Vector2.ZERO
     
     var detected_circle = _determine_circle(magnitude)
+    var complexity = _get_complexity_level(detected_circle)
     var is_transition = _check_transition(detected_circle)
     
     if is_transition:
-        _record_transition(current_circle, detected_circle, direction)
+        _handle_circle_transition(current_circle, detected_circle)
     
     _update_circle_state(detected_circle)
     
@@ -141,6 +127,7 @@ func process_input(stick_input: Vector2) -> Dictionary:
         "circle": current_circle,
         "direction": direction,
         "magnitude": magnitude,
+        "complexity_level": complexity,
         "is_transition": is_transition,
         "raw_input": stick_input
     }
@@ -148,23 +135,25 @@ func process_input(stick_input: Vector2) -> Dictionary:
 func _determine_circle(magnitude: float) -> InputCircle:
     if magnitude < dead_zone:
         return InputCircle.NONE
-    elif magnitude <= inner_circle_max:
-        return InputCircle.INNER
-    elif magnitude >= outer_circle_min and magnitude <= outer_circle_max:
-        return InputCircle.OUTER
+    elif magnitude < circle_threshold:
+        return InputCircle.INNER  # Complex moves (<90%)
     else:
-        return InputCircle.NONE  # Beyond maximum range
+        return InputCircle.OUTER  # Simple moves (>=90%)
+
+func _get_complexity_level(circle: InputCircle) -> String:
+    match circle:
+        InputCircle.INNER:
+            return "complex"    # Requires precision and skill
+        InputCircle.OUTER:
+            return "simple"     # Basic directional actions
+        _:
+            return "none"
 
 func _check_transition(new_circle: InputCircle) -> bool:
     return current_circle != new_circle and new_circle != InputCircle.NONE
-
-func get_recent_transitions(time_window: float = 1.0) -> Array[CircleTransition]:
-    var current_time = Time.get_time_dict_from_system()
-    return transition_buffer.filter(func(t): return current_time - t.timestamp <= time_window)
 ```
 
-##### MotionPatternDetector Class
-
+#### MotionPatternDetector Class
 ```gdscript
 # scripts/systems/MotionPatternDetector.gd
 extends Node
@@ -191,37 +180,64 @@ class MotionInput:
         timestamp = time
 
 func _ready():
-    _setup_dual_circle_patterns()
+    _setup_refined_patterns()
 
-func _setup_dual_circle_patterns():
-    # Inner circle patterns
+func _setup_refined_patterns():
+    # Simple moves (outer circle - >=90% magnitude)
     pattern_definitions["walk"] = {
-        "inputs": [{"direction": Vector2.RIGHT, "circle": DualCircleInputDetector.InputCircle.INNER}],
-        "type": "hold"
+        "inputs": [{"direction": Vector2.RIGHT, "circle": DualCircleInputDetector.InputCircle.OUTER}],
+        "type": "hold",
+        "complexity": "simple"
+    }
+    
+    pattern_definitions["sprint"] = {
+        "inputs": [{"direction": Vector2.RIGHT, "circle": DualCircleInputDetector.InputCircle.OUTER, "min_magnitude": 0.95}],
+        "type": "hold",
+        "complexity": "simple"
+    }
+    
+    pattern_definitions["stop"] = {
+        "inputs": [{"direction": Vector2.UP, "circle": DualCircleInputDetector.InputCircle.OUTER}],
+        "type": "hold",
+        "complexity": "simple"
     }
     
     pattern_definitions["crouch"] = {
-        "inputs": [{"direction": Vector2.DOWN, "circle": DualCircleInputDetector.InputCircle.INNER}],
-        "type": "hold"
+        "inputs": [{"direction": Vector2.DOWN, "circle": DualCircleInputDetector.InputCircle.OUTER}],
+        "type": "hold",
+        "complexity": "simple"
     }
     
-    # Outer circle patterns
+    # Complex moves (inner circle - <90% magnitude)
     pattern_definitions["pole_vault"] = {
         "inputs": [
-            {"direction": Vector2.DOWN, "circle": DualCircleInputDetector.InputCircle.OUTER},
-            {"direction": Vector2(1, 1).normalized(), "circle": DualCircleInputDetector.InputCircle.OUTER},
-            {"direction": Vector2.RIGHT, "circle": DualCircleInputDetector.InputCircle.OUTER}
+            {"direction": Vector2.DOWN, "circle": DualCircleInputDetector.InputCircle.INNER},
+            {"direction": Vector2(1, 1).normalized(), "circle": DualCircleInputDetector.InputCircle.INNER},
+            {"direction": Vector2.RIGHT, "circle": DualCircleInputDetector.InputCircle.INNER}
         ],
-        "type": "sequence"
+        "type": "sequence",
+        "complexity": "complex"
     }
     
-    # Circle transition patterns
+    pattern_definitions["spinning_swipe"] = {
+        "inputs": [
+            {"direction": Vector2.RIGHT, "circle": DualCircleInputDetector.InputCircle.INNER},
+            {"direction": Vector2.DOWN, "circle": DualCircleInputDetector.InputCircle.INNER},
+            {"direction": Vector2(1, 1).normalized(), "circle": DualCircleInputDetector.InputCircle.INNER},
+            {"type": "rotation", "degrees": 270, "circle": DualCircleInputDetector.InputCircle.INNER}
+        ],
+        "type": "complex_sequence",
+        "complexity": "complex"
+    }
+    
+    # Mixed circle moves (outer force + inner precision)
     pattern_definitions["stand_up"] = {
         "inputs": [
             {"type": "full_rotation", "circle": DualCircleInputDetector.InputCircle.OUTER},
             {"direction": Vector2.UP, "circle": DualCircleInputDetector.InputCircle.INNER}
         ],
-        "type": "complex"
+        "type": "mixed_complexity",
+        "complexity": "mixed"
     }
 
 func add_input(direction: Vector2, magnitude: float, circle: DualCircleInputDetector.InputCircle):
@@ -237,20 +253,9 @@ func _check_all_patterns():
             pattern_detected.emit(pattern_name)
             _clear_relevant_buffer(pattern_name)
             break
-
-func _matches_pattern(pattern_name: String, pattern_def: Dictionary) -> bool:
-    match pattern_def.type:
-        "hold":
-            return _matches_hold_pattern(pattern_def)
-        "sequence":
-            return _matches_sequence_pattern(pattern_def)
-        "complex":
-            return _matches_complex_pattern(pattern_def)
-    return false
 ```
 
-#### InputManager Class
-
+#### InputManager Class (No Stick Clicks)
 ```gdscript
 # scripts/systems/InputManager.gd
 extends Node
@@ -258,101 +263,69 @@ class_name InputManager
 
 signal movement_input_changed(movement: Vector2)
 signal camera_input_changed(camera: Vector2)
-signal interaction_triggered()
 signal dual_circle_input_detected(input_data: Dictionary)
 
 @export var left_stick_dead_zone: float = 0.1
 @export var right_stick_dead_zone: float = 0.15
-@export var stick_sensitivity: float = 1.0
 
 var current_controller: int = -1
 var dual_circle_detector: DualCircleInputDetector
 var motion_pattern_detector: MotionPatternDetector
-var input_buffer: Array[InputEvent] = []
+
+# Explicitly disable stick clicks
+var processes_stick_clicks: bool = false
+var left_stick_click_enabled: bool = false
+var right_stick_click_enabled: bool = false
 
 func _ready():
+    dual_circle_detector = DualCircleInputDetector.new()
+    motion_pattern_detector = MotionPatternDetector.new()
+    add_child(dual_circle_detector)
+    add_child(motion_pattern_detector)
+    
     _detect_controllers()
     _setup_input_mapping()
 
 func _input(event: InputEvent):
     if event is InputEventJoypadMotion:
-        _handle_stick_input(event)
-    elif event is InputEventJoypadButton:
-        _handle_button_input(event)
+        _handle_stick_motion(event)
+    # Explicitly ignore button events including stick clicks
 
-func _handle_stick_input(event: InputEventJoypadMotion):
+func _handle_stick_motion(event: InputEventJoypadMotion):
     match event.axis:
         JOY_AXIS_LEFT_X, JOY_AXIS_LEFT_Y:
-            _process_movement_input()
+            _process_left_stick_input()
         JOY_AXIS_RIGHT_X, JOY_AXIS_RIGHT_Y:
-            _process_camera_input()
+            _process_right_stick_camera()
 
-func get_movement_input() -> Vector2:
+func _process_left_stick_input():
     var raw_input = Vector2(
         Input.get_joy_axis(current_controller, JOY_AXIS_LEFT_X),
         Input.get_joy_axis(current_controller, JOY_AXIS_LEFT_Y)
     )
-    return _apply_dead_zone(raw_input, left_stick_dead_zone)
+    
+    var input_data = dual_circle_detector.process_input(raw_input)
+    dual_circle_input_detected.emit(input_data)
+    
+    # Send to motion detector for pattern recognition
+    if input_data.circle != DualCircleInputDetector.InputCircle.NONE:
+        motion_pattern_detector.add_input(
+            input_data.direction, 
+            input_data.magnitude, 
+            input_data.circle
+        )
 
-func get_camera_input() -> Vector2:
-    var raw_input = Vector2(
+func _process_right_stick_camera():
+    # Camera control only - no action processing
+    var camera_input = Vector2(
         Input.get_joy_axis(current_controller, JOY_AXIS_RIGHT_X),
         Input.get_joy_axis(current_controller, JOY_AXIS_RIGHT_Y)
     )
-    return _apply_dead_zone(raw_input, right_stick_dead_zone)
-
-func _apply_dead_zone(input: Vector2, dead_zone: float) -> Vector2:
-    if input.length() < dead_zone:
-        return Vector2.ZERO
-
-    # Scale input to remove dead zone
-    var scaled_magnitude = (input.length() - dead_zone) / (1.0 - dead_zone)
-    return input.normalized() * scaled_magnitude * stick_sensitivity
+    
+    if camera_input.length() > right_stick_dead_zone:
+        camera_input_changed.emit(camera_input)
 ```
-
-#### Controller Compatibility Layer
-
-```gdscript
-# scripts/systems/ControllerMapper.gd
-extends Resource
-class_name ControllerMapper
-
-enum ControllerType {
-    XBOX,
-    PLAYSTATION,
-    NINTENDO_SWITCH,
-    GENERIC
-}
-
-var controller_mappings: Dictionary = {
-    ControllerType.XBOX: {
-        "left_stick_x": JOY_AXIS_LEFT_X,
-        "left_stick_y": JOY_AXIS_LEFT_Y,
-        "right_stick_x": JOY_AXIS_RIGHT_X,
-        "right_stick_y": JOY_AXIS_RIGHT_Y,
-        "right_stick_click": JOY_BUTTON_RIGHT_STICK
-    },
-    ControllerType.PLAYSTATION: {
-        "left_stick_x": JOY_AXIS_LEFT_X,
-        "left_stick_y": JOY_AXIS_LEFT_Y,
-        "right_stick_x": JOY_AXIS_RIGHT_X,
-        "right_stick_y": JOY_AXIS_RIGHT_Y,
-        "right_stick_click": JOY_BUTTON_RIGHT_STICK
-    }
-}
-
-func detect_controller_type(device_id: int) -> ControllerType:
-    var device_name = Input.get_joy_name(device_id).to_lower()
-
-    if "xbox" in device_name or "microsoft" in device_name:
-        return ControllerType.XBOX
-    elif "playstation" in device_name or "sony" in device_name:
-        return ControllerType.PLAYSTATION
-    elif "nintendo" in device_name or "switch" in device_name:
-        return ControllerType.NINTENDO_SWITCH
-    else:
-        return ControllerType.GENERIC
-```
+````markdown
 
 ### 2. Physics System
 
