@@ -109,8 +109,8 @@ Hysteresis Logic: Once in outer circle, requires <85% to return to inner circle
 
 #### Outer Circle Moves (>=90% magnitude - Simple Actions)
 
-1. **Walk**: Hold direction - 120 pixels/second movement, pole leans slightly
-2. **Sprint**: Hold direction - 180 pixels/second movement, pole leans forward
+1. **Walk**: Hold direction - 120 pixels/second movement (adjustable), pole leans slightly
+2. **Sprint**: Hold direction - 180 pixels/second movement (adjustable), pole leans forward
 3. **Stop**: Hold up - Pole straightens, robot enters neutral position
 4. **Crouch**: Hold down - Pole drops naturally, lower profile
 

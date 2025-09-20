@@ -1,0 +1,38 @@
+name: HOPE CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Set up Godot
+      uses: chickensoft-games/setup-godot@v1
+      with:
+        version: 4.4
+        use-dotnet: false
+
+    - name: Make test script executable
+      run: chmod +x run_tests.sh
+
+    - name: Run unit tests
+      run: ./run_tests.sh
+
+    - name: Upload test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: test-results
+        path: |
+          test_results.json
+          test_results.xml
