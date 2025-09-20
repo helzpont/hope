@@ -23,11 +23,13 @@ run_tests.bat                # Windows CI script
 ### Local Development
 
 1. **Via Godot Editor:**
+
    - Open the project in Godot
    - Run the `test_runner.tscn` scene
    - Tests will execute and show results in the console
 
 2. **Via Command Line:**
+
    ```bash
    # Linux/macOS
    ./run_tests.sh
@@ -42,6 +44,7 @@ run_tests.bat                # Windows CI script
 ### CI/CD
 
 The project includes GitHub Actions workflow (`.github/workflows/ci.yml`) that:
+
 - Runs on pushes and pull requests to main/develop branches
 - Uses Ubuntu with Godot 4.4
 - Executes all unit tests in headless mode
@@ -71,6 +74,7 @@ The project includes GitHub Actions workflow (`.github/workflows/ci.yml`) that:
 ### Input Simulation
 
 Tests use direct property manipulation to simulate input:
+
 ```gdscript
 input_handler.current_magnitude = 0.8
 input_handler.current_direction = Vector2(0.8, 0.0)
@@ -79,14 +83,17 @@ input_handler.current_direction = Vector2(0.8, 0.0)
 ## 📈 CI Integration
 
 ### Exit Codes
+
 - `0`: All tests passed
 - `1`: Some tests failed
 
 ### Artifacts
+
 - `test_results.json`: Detailed test results
 - `test_results.xml`: JUnit XML format for CI tools
 
 ### Supported Platforms
+
 - ✅ Linux (Ubuntu)
 - ✅ macOS
 - ✅ Windows
@@ -100,6 +107,7 @@ input_handler.current_direction = Vector2(0.8, 0.0)
 4. Follow naming convention: `test_descriptive_name()`
 
 Example:
+
 ```gdscript
 extends GutTest
 

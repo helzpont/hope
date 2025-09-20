@@ -1,0 +1,75 @@
+[gd_scene load_steps=3 format=3 uid="uid://b8q8x8x8x8x8x"]
+
+[ext_resource type="Script" path="res://scripts/input_calibration.gd" id="1"]
+
+[sub_resource type="LabelSettings" id="LabelSettings_calibration"]
+font_size = 24
+font_color = Color(1, 1, 1, 1)
+
+[node name="CalibrationScene" type="Node2D"]
+script = ExtResource("1")
+
+[node name="UI" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="TitleLabel" type="Label" parent="UI"]
+layout_mode = 0
+offset_left = 50.0
+offset_top = 30.0
+offset_right = 550.0
+offset_bottom = 70.0
+text = "🎮 Controller Input Calibration"
+label_settings = SubResource("LabelSettings_calibration")
+
+[node name="InstructionsLabel" type="Label" parent="UI"]
+layout_mode = 0
+offset_left = 50.0
+offset_top = 80.0
+offset_right = 750.0
+offset_bottom = 140.0
+text = "Move the left stick in all directions and to maximum strength.
+Press SPACE to record maximum values.
+Press ENTER to save calibration and exit."
+
+[node name="CurrentValuesLabel" type="Label" parent="UI"]
+layout_mode = 0
+offset_left = 50.0
+offset_top = 150.0
+offset_right = 750.0
+offset_bottom = 250.0
+text = "Current Input:
+Max Magnitude: 0.000
+Current Magnitude: 0.000
+Direction: (0.000, 0.000)"
+
+[node name="ThresholdsLabel" type="Label" parent="UI"]
+layout_mode = 0
+offset_left = 50.0
+offset_top = 280.0
+offset_right = 750.0
+offset_bottom = 380.0
+text = "Current Thresholds:
+Deadzone: 0.010
+Inner Entry: 0.100
+Inner Exit: 0.010
+Outer Entry: 0.950
+Outer Exit: 0.850"
+
+[node name="CalibrationLabel" type="Label" parent="UI"]
+layout_mode = 0
+offset_left = 50.0
+offset_top = 410.0
+offset_right = 750.0
+offset_bottom = 510.0
+text = "Calibration Results:
+Max Recorded: 0.000
+Suggested Deadzone: 0.000
+Suggested Inner Entry: 0.000
+Suggested Inner Exit: 0.000
+Suggested Outer Entry: 0.000
+Suggested Outer Exit: 0.000"

@@ -1,115 +1,179 @@
-extends GutTest
+extends Node
 
 # Unit tests for InputHandler basic movements
 
-class TestInputHandler:
-	extends GutTest
+var input_handler: InputHandler
+var received_actions = []
+var test_input_provider: TestInputProvider
 
-	var input_handler: InputHandler
-	var received_actions = []
+func before_each():
+	test_input_provider = TestInputProvider.new()
+	input_handler = InputHandler.new(test_input_provider)
+	add_child(input_handler)
+	received_actions.clear()
+	input_handler.connect("action_detected", Callable(self, "_on_action_detected"))
 
-	func before_each():
-		input_handler = InputHandler.new()
-		add_child(input_handler)
-		received_actions.clear()
-		input_handler.connect("action_detected", Callable(self, "_on_action_detected"))
+func after_each():
+	if input_handler:
+		input_handler.queue_free()
+	if test_input_provider:
+		test_input_provider.queue_free()
 
-	func after_each():
-		if input_handler:
-			input_handler.queue_free()
+func _on_action_detected(action_name: String, direction: Vector2, circle: String, magnitude: float):
+	received_actions.append({
+		"action": action_name,
+		"direction": direction,
+		"circle": circle,
+		"magnitude": magnitude
+	})
 
-	func _on_action_detected(action_name: String, direction: Vector2, circle: String, magnitude: float):
-		received_actions.append({
-			"action": action_name,
-			"direction": direction,
-			"circle": circle,
-			"magnitude": magnitude
-		})
+func test_deadzone_filtering():
+	before_each()
+	
+	# Test that very small inputs are filtered out (below 0.01)
+	_simulate_input(Vector2(0.005, 0.005)) # Below deadzone
+	input_handler._handle_input(0.016, test_input_provider)
 
-	func test_deadzone_filtering():
-		# Test that small inputs are filtered out
-		watch_signals(input_handler)
+	assert_eq(received_actions.size(), 1, "Should detect one action")
+	assert_eq(received_actions[0]["action"], "idle", "Very small input should be filtered to idle")
+	
+	after_each()
 
-		# Simulate small input below deadzone
-		_simulate_input(Vector2(0.05, 0.05))
-		input_handler._process(0.016)
+func test_hysteresis_inner_circle():
+	before_each()
+	
+	# Start with no input
+	_simulate_input(Vector2.ZERO)
+	input_handler._handle_input(0.016, test_input_provider)
+	assert_eq(received_actions[0]["action"], "idle", "Should start idle")
+	
+	# Cross entry threshold (0.1) - should enter inner circle and walk
+	received_actions.clear()
+	_simulate_input(Vector2(0.15, 0.0)) # 15% magnitude
+	input_handler._handle_input(0.016, test_input_provider)
+	assert_eq(received_actions[0]["action"], "walk", "Should walk when entering inner circle")
+	assert_eq(received_actions[0]["circle"], "Inner", "Should be in inner circle")
+	
+	# Drop below exit threshold (0.01) but above deadzone - should stay walking (hysteresis)
+	received_actions.clear()
+	_simulate_input(Vector2(0.03, 0.0)) # 3% magnitude
+	input_handler._handle_input(0.016, test_input_provider)
+	assert_eq(received_actions[0]["action"], "walk", "Should keep walking (hysteresis)")
+	assert_eq(received_actions[0]["circle"], "Inner", "Should stay in inner circle")
+	
+	# Drop below exit threshold - should go idle
+	received_actions.clear()
+	_simulate_input(Vector2(0.009, 0.0)) # 0.9% magnitude
+	input_handler._handle_input(0.016, test_input_provider)
+	assert_eq(received_actions[0]["action"], "idle", "Should go idle below exit threshold")
+	assert_eq(received_actions[0]["circle"], "None", "Should be outside inner circle")
+	
+	after_each()
 
-		assert_eq(received_actions.size(), 1, "Should detect one action")
-		assert_eq(received_actions[0]["action"], "idle", "Small input should be filtered to idle")
+func test_inner_circle_walk():
+	before_each()
 
-	func test_inner_circle_walk():
-		watch_signals(input_handler)
+	# Simulate moderate input (inner circle)
+	_simulate_input(Vector2(0.5, 0.0)) # 50% magnitude
+	input_handler._handle_input(0.016, test_input_provider)
 
-		# Simulate moderate input (inner circle)
-		_simulate_input(Vector2(0.5, 0.0))  # 50% magnitude
-		input_handler._process(0.016)
+	assert_eq(received_actions.size(), 1, "Should detect one action")
+	assert_eq(received_actions[0]["action"], "walk", "Inner circle should trigger walk")
+	assert_eq(received_actions[0]["circle"], "Inner", "Should be in inner circle")
 
-		assert_eq(received_actions.size(), 1, "Should detect one action")
-		assert_eq(received_actions[0]["action"], "walk", "Inner circle should trigger walk")
-		assert_eq(received_actions[0]["circle"], "Inner", "Should be in inner circle")
+	after_each()
 
-	func test_outer_circle_dash():
-		watch_signals(input_handler)
+func test_outer_circle_dash():
+	before_each()
 
-		# First enter outer circle
-		_simulate_input(Vector2(0.98, 0.0))  # 98% magnitude
-		input_handler._process(0.016)
+	# First enter outer circle
+	_simulate_input(Vector2(0.98, 0.0)) # 98% magnitude
+	input_handler._handle_input(0.016, test_input_provider)
 
-		assert_eq(received_actions.size(), 1, "Should detect one action")
-		assert_eq(received_actions[0]["action"], "dash", "Outer circle should trigger dash")
-		assert_eq(received_actions[0]["circle"], "Outer", "Should be in outer circle")
+	assert_eq(received_actions.size(), 1, "Should detect one action")
+	assert_eq(received_actions[0]["action"], "dash", "Outer circle should trigger dash")
+	assert_eq(received_actions[0]["circle"], "Outer", "Should be in outer circle")
 
-	func test_hysteresis_buffer():
-		watch_signals(input_handler)
+	after_each()
 
-		# Enter outer circle
-		_simulate_input(Vector2(0.98, 0.0))
-		input_handler._process(0.016)
-		assert_eq(received_actions[0]["circle"], "Outer", "Should enter outer circle")
+func test_hysteresis_buffer():
+	before_each()
 
-		# Try to exit with value in hysteresis zone (90%)
-		received_actions.clear()
-		_simulate_input(Vector2(0.9, 0.0))
-		input_handler._process(0.016)
+	# Enter outer circle
+	_simulate_input(Vector2(0.98, 0.0))
+	input_handler._handle_input(0.016, test_input_provider)
+	assert_eq(received_actions[0]["circle"], "Outer", "Should enter outer circle")
 
-		assert_eq(received_actions[0]["circle"], "Outer", "Should stay in outer circle (hysteresis)")
+	# Try to exit with value in hysteresis zone (90%)
+	received_actions.clear()
+	_simulate_input(Vector2(0.9, 0.0))
+	input_handler._handle_input(0.016, test_input_provider)
 
-		# Exit with value below inner threshold
-		received_actions.clear()
-		_simulate_input(Vector2(0.7, 0.0))
-		input_handler._process(0.016)
+	assert_eq(received_actions[0]["circle"], "Outer", "Should stay in outer circle (hysteresis)")
 
-		assert_eq(received_actions[0]["circle"], "Inner", "Should exit outer circle")
+	# Exit with value below inner threshold
+	received_actions.clear()
+	_simulate_input(Vector2(0.7, 0.0))
+	input_handler._handle_input(0.016, test_input_provider)
 
-	func test_direction_normalization():
-		watch_signals(input_handler)
+	assert_eq(received_actions[0]["circle"], "Inner", "Should exit outer circle")
 
-		# Test diagonal input
-		_simulate_input(Vector2(0.6, 0.6))  # Should normalize to unit vector
-		input_handler._process(0.016)
+	after_each()
 
-		var direction = received_actions[0]["direction"]
-		assert_almost_eq(direction.length(), 1.0, 0.01, "Direction should be normalized")
+func test_direction_normalization():
+	before_each()
 
-	func test_no_input_idle():
-		watch_signals(input_handler)
+	# Test diagonal input
+	_simulate_input(Vector2(0.6, 0.6)) # Should normalize to unit vector
+	input_handler._handle_input(0.016, test_input_provider)
 
-		# No input
-		_simulate_input(Vector2.ZERO)
-		input_handler._process(0.016)
+	var direction = received_actions[0]["direction"]
+	assert_almost_eq(direction.length(), 1.0, 0.01, "Direction should be normalized")
 
-		assert_eq(received_actions[0]["action"], "idle", "No input should trigger idle")
+	after_each()
 
-	func test_magnitude_calculation():
-		watch_signals(input_handler)
+func test_no_input_idle():
+	before_each()
 
-		_simulate_input(Vector2(0.8, 0.0))
-		input_handler._process(0.016)
+	# No input
+	_simulate_input(Vector2.ZERO)
+	input_handler._handle_input(0.016, test_input_provider)
 
-		assert_almost_eq(received_actions[0]["magnitude"], 0.8, 0.01, "Magnitude should be correct")
+	assert_eq(received_actions[0]["action"], "idle", "No input should trigger idle")
 
-	func _simulate_input(input_vector: Vector2):
-		# Mock the Input.get_vector call by directly setting the input
-		# In a real test, you might need to mock the Input singleton
-		input_handler.current_magnitude = input_vector.length()
-		input_handler.current_direction = input_vector.normalized() if input_vector != Vector2.ZERO else Vector2.ZERO
+	after_each()
+
+func test_magnitude_calculation():
+	before_each()
+
+	_simulate_input(Vector2(0.8, 0.0))
+	input_handler._handle_input(0.016, test_input_provider)
+
+	assert_almost_eq(received_actions[0]["magnitude"], 0.8, 0.01, "Magnitude should be correct")
+
+	after_each()
+
+func _simulate_input(input_vector: Vector2):
+	# Use the test input provider to inject input
+	test_input_provider.set_left_stick_vector(input_vector)
+
+# Simple assertion functions
+func assert_eq(actual, expected, message = ""):
+	if actual != expected:
+		print("❌ ASSERT FAILED: ", message)
+		print("  Expected: ", expected)
+		print("  Actual: ", actual)
+		return false
+	else:
+		print("✅ ASSERT PASSED: ", message)
+		return true
+
+func assert_almost_eq(actual, expected, tolerance = 0.01, message = ""):
+	if abs(actual - expected) > tolerance:
+		print("❌ ASSERT FAILED: ", message)
+		print("  Expected: ", expected)
+		print("  Actual: ", actual)
+		return false
+	else:
+		print("✅ ASSERT PASSED: ", message)
+		return true
